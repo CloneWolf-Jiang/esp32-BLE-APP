@@ -8,6 +8,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.location.LocationManager
@@ -81,16 +85,18 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     }
 
     private fun accentColor(): Int {
-        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        return if (dark) 0xff79d6c2.toInt() else 0xff267766.toInt()
+        val dark = isDarkMode()
+        return if (dark) 0xff79baff.toInt() else 0xff318fe3.toInt()
     }
 
     private fun accentSurface(): Int {
-        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        return if (dark) 0xff253b35.toInt() else 0xffe7f3ee.toInt()
+        val dark = isDarkMode()
+        return if (dark) 0xff193149.toInt() else 0xffeaf5ff.toInt()
     }
+
+    private fun isDarkMode(): Boolean =
+        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
 
     override fun onDestroy() {
         wifiScanner.close()
@@ -125,10 +131,10 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         val dark = (resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val background = if (dark) 0xff111816.toInt() else 0xfff5f7f6.toInt()
-        val surface = if (dark) 0xff1a2421.toInt() else 0xffffffff.toInt()
-        val text = if (dark) 0xfff0f5f3.toInt() else 0xff18221f.toInt()
-        val muted = if (dark) 0xffb0beb9.toInt() else 0xff61716b.toInt()
+        val background = if (dark) 0xff101820.toInt() else 0xfffbfdff.toInt()
+        val surface = if (dark) 0xff17232e.toInt() else 0xffffffff.toInt()
+        val text = if (dark) 0xffedf4fa.toInt() else 0xff1b2735.toInt()
+        val muted = if (dark) 0xffa2b1bf.toInt() else 0xff718196.toInt()
         window.statusBarColor = background
         window.navigationBarColor = background
         @Suppress("DEPRECATION")
@@ -141,7 +147,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(18), dp(22), dp(30))
+            setPadding(dp(22), dp(16), dp(22), dp(30))
         }
         root = column
         scroll.addView(column)
@@ -190,6 +196,16 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             }
             Screen.SCANNING -> {
                 column.addView(label(getString(R.string.scan_title), 28, text, true))
+                column.addView(space(8))
+                column.addView(label(
+                    getString(if (scanActive) R.string.scanning else R.string.scan_done),
+                    15,
+                    muted,
+                    false
+                ))
+                column.addView(space(8))
+                column.addView(scanIllustration())
+                column.addView(space(8))
                 column.addView(space(12))
                 column.addView(card(surface) {
                     addView(label(getString(R.string.scan_card_title), 17, text, true))
@@ -525,6 +541,59 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             diagram.addView(button, params)
         }
         return diagram
+    }
+
+    private fun scanIllustration(): View = object : View(this) {
+        private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = dp(1).toFloat()
+        }
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val centerX = width / 2f
+            val centerY = height / 2f
+            val radius = dp(76).toFloat()
+            fillPaint.color = if (isDarkMode()) 0xff172c3e.toInt() else 0xfff0f7fe.toInt()
+            canvas.drawCircle(centerX, centerY, radius + dp(12), fillPaint)
+            fillPaint.color = if (isDarkMode()) 0xff1b3348.toInt() else 0xfff7fbff.toInt()
+            canvas.drawCircle(centerX, centerY, radius * 0.68f, fillPaint)
+
+            ringPaint.color = if (isDarkMode()) 0xff34516a.toInt() else 0xffdcebf8.toInt()
+            canvas.drawCircle(centerX, centerY, radius, ringPaint)
+            canvas.drawCircle(centerX, centerY, radius * 0.68f, ringPaint)
+
+            val sweep = Path().apply {
+                moveTo(centerX, centerY)
+                arcTo(
+                    RectF(centerX - radius, centerY - radius, centerX + radius, centerY + radius),
+                    -48f,
+                    52f,
+                    false
+                )
+                close()
+            }
+            fillPaint.color = if (isDarkMode()) 0x5579baff else 0x55318fe3
+            canvas.drawPath(sweep, fillPaint)
+            ringPaint.color = accentColor()
+            ringPaint.strokeWidth = dp(2).toFloat()
+            canvas.drawLine(
+                centerX,
+                centerY,
+                centerX + radius * 0.64f,
+                centerY + radius * 0.46f,
+                ringPaint
+            )
+            fillPaint.color = accentColor()
+            canvas.drawCircle(centerX, centerY, dp(5).toFloat(), fillPaint)
+        }
+    }.apply {
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(180)
+        )
+        contentDescription = getString(R.string.scanning)
     }
 
     private fun deviceRow(item: FoundDevice, surface: Int, text: Int, muted: Int): View =
@@ -953,9 +1022,9 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             gravity = Gravity.CENTER_VERTICAL
             val mark = label("E", 19, 0xffffffff.toInt(), true).apply {
                 gravity = Gravity.CENTER
-                background = rounded(accentColor(), accentColor(), 17)
+                background = rounded(accentColor(), accentColor(), 14)
             }
-            addView(mark, LinearLayout.LayoutParams(dp(38), dp(38)))
+            addView(mark, LinearLayout.LayoutParams(dp(40), dp(40)))
             val brandText = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(10), 0, 0, 0)
@@ -965,7 +1034,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             addView(brandText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             val badge = label(getString(R.string.ble_badge), 11, accentColor(), true).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(10), dp(6), dp(10), dp(6))
+                setPadding(dp(12), dp(7), dp(12), dp(7))
                 background = rounded(accentSurface(), accentSurface())
             }
             addView(badge)
@@ -1015,7 +1084,8 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(18), dp(18), dp(18))
-            background = rounded(color, fieldBorder(), 22)
+            background = rounded(color, fieldBorder(), 24)
+            elevation = dp(2).toFloat()
             content()
         }
 
@@ -1033,9 +1103,9 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 if (primary) accentColor() else fieldBorder(),
                 16
             )
-            minHeight = dp(54)
-            setPadding(dp(18), dp(12), dp(18), dp(12))
-            elevation = if (primary) dp(2).toFloat() else 0f
+            minHeight = dp(56)
+            setPadding(dp(20), dp(13), dp(20), dp(13))
+            elevation = if (primary) dp(3).toFloat() else 0f
             setOnClickListener { action() }
         }
 
@@ -1051,15 +1121,11 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         }
 
     private fun fieldBackground(surface: Int? = null): Int {
-        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        return surface ?: if (dark) 0xff202d29.toInt() else 0xfff7f9f8.toInt()
+        return surface ?: if (isDarkMode()) 0xff202d39.toInt() else 0xfff6f9fc.toInt()
     }
 
     private fun fieldBorder(): Int {
-        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-        return if (dark) 0xff34443e.toInt() else 0xffe5ebe8.toInt()
+        return if (isDarkMode()) 0xff30404e.toInt() else 0xffe7edf4.toInt()
     }
 
     private fun matchWrap(): LinearLayout.LayoutParams =
