@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">ESPHome Provisioning</string>
+    <string name="brand">ESPHome · BLE Provisioning</string>
+    <string name="brand_subtitle">Smart device setup</string>
+    <string name="ble_badge">BLE setup</string>
+    <string name="intro_title">Put your switch in provisioning mode</string>
+    <string name="guide_subtitle">Follow a few simple steps to securely connect your device to the home network.</string>
+    <string name="guide_step">STEP 1 · ENABLE DEVICE SETUP</string>
+    <string name="guide_footer">After authorization, choose a 2.4 GHz Wi-Fi network to continue.</string>
+    <string name="intro_body">Press and hold the leftmost button (button 1) for 5 seconds. The device has no light, display, or buzzer feedback.</string>
+    <string name="button_window">After release, the authorization window lasts 1 minute</string>
+    <string name="start_scan">Start scanning</string>
+    <string name="scan_card_title">Select your ESPHome device</string>
+    <string name="wifi_show_5ghz">Also show 5 GHz Wi-Fi</string>
+    <string name="wifi_band_hint">Only 2.4 GHz networks are shown by default, recommended for ESP32-C3 devices.</string>
+    <string name="band_24ghz">2.4 GHz</string>
+    <string name="band_5ghz">5 GHz</string>
+    <string name="band_unknown">Band unknown</string>
+    <string name="band_other">Other band</string>
+    <string name="step_device">Find device</string>
+    <string name="step_authorize">Authorize</string>
+    <string name="step_wifi">Connect Wi-Fi</string>
+</resources>
