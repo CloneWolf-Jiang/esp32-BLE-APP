@@ -14,7 +14,7 @@
 
 ## 构建
 
-需要 JDK 17 和 Android SDK Platform 36。测试 APK 使用临时自签名密钥签名；证书公开文件位于 `release/esp32-ble-test-cert.pem`。私钥不会提交到仓库，故该 APK 只用于首次安装测试，无法用同一签名发布后续覆盖升级。
+需要 JDK 17 和 Android SDK Platform 36。测试 APK 配置 `minSdk 21`（Android 5.0）及 `targetSdk 36`（Android 16），按 Android 5.0 至 Android 16 进行兼容性构建。Android 没有由 target SDK 设置的最高运行版本，target 36 表示适配 Android 16 的平台行为。
 
 ```sh
 ./gradlew testDebugUnitTest
@@ -27,12 +27,13 @@
 
 - 测试 APK：[`release/esp32-ble-app-test.apk`](release/esp32-ble-app-test.apk)
 - 自签名公钥证书：[`release/esp32-ble-test-cert.pem`](release/esp32-ble-test-cert.pem)
-- APK SHA-256：`677933841adb464a2c19e9e59bb625de698b9a4f246ff6870aff86bbe5cb92a9`
-- 证书 SHA-256 指纹：`EF:5E:C0:3F:70:3D:61:12:38:7E:37:43:89:00:D9:C5:C7:F9:4E:DF:26:FC:66:54:DE:6E:A6:F4:22:BD:21:93`
+- Actions 构建下载：打开仓库 **Actions → Publish test APK → 最新成功运行 → Artifacts → `esphome-ble-app-test`**。该 Artifact 由 Android Gradle Plugin 从源码构建，并包含当次构建的 APK、debug 自签名证书和 SHA-256 校验文件。
+- APK SHA-256：`f0dc3d021d1057e207d15be5b043fe7e16bd07f13b90a89d043168d3fb94cfb4`
+- 证书 SHA-256 指纹：`FF:6F:64:21:00:3C:9A:BE:D0:3F:59:2A:9E:F9:EF:5C:D3:91:5C:1D:4F:3A:65:34:06:47:78:4D:69:3E:22:BC`
 
-APK 已用 Android SDK 本地工具编译为 DEX、打包、对齐，并通过 APK Signature Scheme v2/v3 验签。当前执行环境无法从 Google Maven 下载 Android Gradle Plugin，因此没有声称 Gradle 任务构建成功；也没有可连接的 Android 设备执行安装或蓝牙实测。测试 APK 以 `com.clonewolf.esphomeble`、`versionCode 1` 标识。
+APK 已使用 Android SDK 36 的本地工具从当前 Kotlin 源码重新编译为 DEX、打包、对齐，并通过 APK Signature Scheme v2/v3 验签。当前执行环境无法从 Google Maven 下载 Android Gradle Plugin，因此没有声称 Gradle 任务构建成功；也没有可连接的 Android 设备执行安装或蓝牙实测。测试 APK 以 `com.clonewolf.esphomeble`、`versionCode 2`、`versionName 1.1` 标识。
 
-证书是自签名测试证书，不受系统或应用商店信任。相同签名可用于验证此次 APK；为避免把私钥放进代码仓库，私钥未随证书或 APK 发布。卸载后重装不受影响，但以后不能用另一个签名的 APK 覆盖升级这次安装。
+证书是自签名测试证书，不受系统或应用商店信任。为避免把私钥放进代码仓库，签名私钥不会随证书或 APK 发布。Actions 使用每次运行的 Android debug keystore，重跑构建后签名可能变化；若安装器提示签名冲突，先卸载旧测试版再安装。
 
 ## Improv BLE 核实结果
 
