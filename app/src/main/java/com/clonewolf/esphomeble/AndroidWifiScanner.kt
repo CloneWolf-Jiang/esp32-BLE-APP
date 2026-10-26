@@ -21,7 +21,7 @@ internal class AndroidWifiScanner(
         fun onScanUnavailable()
     }
 
-    data class Network(val ssid: String, val rssi: Int, val security: String)
+    data class Network(val ssid: String, val rssi: Int, val security: String, val frequencyMHz: Int)
 
     private val manager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val handler = Handler(Looper.getMainLooper())
@@ -99,14 +99,14 @@ internal class AndroidWifiScanner(
         val networks = results.asSequence()
             .filter { it.SSID.isNotBlank() }
             .map(::toNetwork)
-            .distinctBy { it.ssid }
             .sortedByDescending { it.rssi }
+            .distinctBy { it.ssid to WifiBandFilter.bandForFrequency(it.frequencyMHz) }
             .toList()
         listener.onScanResults(networks, fresh)
     }
 
     private fun toNetwork(result: ScanResult): Network =
-        Network(result.SSID, result.level, result.capabilities.orEmpty())
+        Network(result.SSID, result.level, result.capabilities.orEmpty(), result.frequency)
 
     private fun locationEnabled(): Boolean {
         val location = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager

@@ -35,6 +35,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         val ssid: String,
         val title: String,
         val detail: String,
+        val band: WifiBandFilter.Band,
         val select: () -> Unit
     )
 
@@ -51,6 +52,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     private var hiddenNetwork = false
     private var passwordVisible = false
     private var networkQuery = ""
+    private var showFiveGhz = false
     private var phoneWifiFresh = false
     private var phoneScanAttempted = false
     private var scanActive = false
@@ -131,14 +133,24 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         }
         root = column
         scroll.addView(column)
-        column.addView(label(getString(R.string.brand), 13, muted, true))
-        column.addView(space(18))
+        column.addView(appHeader(text, muted))
+        if (screen != Screen.GUIDE) {
+            column.addView(space(18))
+            column.addView(flowProgress(surface, text, muted))
+            column.addView(space(22))
+        } else {
+            column.addView(space(22))
+        }
 
         when (screen) {
             Screen.GUIDE -> {
-                column.addView(label(getString(R.string.intro_title), 27, text, true))
-                column.addView(space(12))
+                column.addView(label(getString(R.string.intro_title), 30, text, true))
+                column.addView(space(8))
+                column.addView(label(getString(R.string.guide_subtitle), 15, muted, false))
+                column.addView(space(20))
                 column.addView(card(surface) {
+                    addView(label(getString(R.string.guide_step), 13, 0xff267766.toInt(), true))
+                    addView(space(10))
                     addView(label(getString(R.string.intro_body), 16, text, false))
                     addView(space(20))
                     addView(buttonDiagram(text, muted))
@@ -162,12 +174,14 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                     }
                 })
                 column.addView(space(8))
-                column.addView(label(getString(R.string.intro_body), 13, muted, false))
+                column.addView(label(getString(R.string.guide_footer), 13, muted, false))
             }
             Screen.SCANNING -> {
-                column.addView(label(getString(R.string.scan_title), 26, text, true))
+                column.addView(label(getString(R.string.scan_title), 28, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
+                    addView(label(getString(R.string.scan_card_title), 17, text, true))
+                    addView(space(8))
                     addView(label(
                         when {
                             scanActive -> getString(R.string.scanning)
@@ -205,6 +219,8 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 column.addView(label(getString(R.string.connecting), 22, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
+                    addView(label(getString(R.string.connecting_step), 13, 0xff267766.toInt(), true))
+                    addView(space(10))
                     addView(label("${getString(R.string.device)}：$selectedDeviceName", 15, text, true))
                     addView(space(6))
                     addView(label(connectionMessage, 15, muted, false))
@@ -238,12 +254,16 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 column.addView(label(getString(R.string.submitting), 22, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
+                    addView(label(getString(R.string.connecting_step), 13, 0xff267766.toInt(), true))
+                    addView(space(10))
                     addView(label(getString(R.string.provisioning), 16, muted, false))
                     addView(space(10))
                     addView(label("SSID: ${ssid.ifBlank { "—" }}", 15, text, true))
                 })
             }
             Screen.SUCCESS -> {
+                column.addView(label(getString(R.string.success_eyebrow), 13, 0xff267766.toInt(), true))
+                column.addView(space(8))
                 column.addView(label(getString(R.string.success_title), 27, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
@@ -259,6 +279,8 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 })
             }
             Screen.ERROR -> {
+                column.addView(label(getString(R.string.error_eyebrow), 13, 0xffb14d39.toInt(), true))
+                column.addView(space(8))
                 column.addView(label(getString(R.string.error_title), 25, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
@@ -276,10 +298,16 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     }
 
     private fun renderWifiScreen(column: LinearLayout, surface: Int, text: Int, muted: Int) {
-        column.addView(label(getString(R.string.wifi_title), 26, text, true))
-        column.addView(space(12))
+        column.addView(label(getString(R.string.wifi_eyebrow), 13, 0xff267766.toInt(), true))
+        column.addView(space(8))
+        column.addView(label(getString(R.string.wifi_title), 28, text, true))
+        column.addView(space(6))
+        column.addView(label(getString(R.string.wifi_subtitle), 14, muted, false))
+        column.addView(space(16))
         column.addView(card(surface) {
             val source = when {
+                deviceNetworks.isNotEmpty() && phoneNetworks.isNotEmpty() ->
+                    getString(R.string.wifi_source_both)
                 deviceNetworks.isNotEmpty() -> getString(R.string.wifi_source_device)
                 wifiScanStarted -> getString(R.string.wifi_scanning)
                 phoneScanAttempted -> getString(R.string.wifi_source_phone)
@@ -290,31 +318,70 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 addView(space(5))
                 addView(label(getString(R.string.cached_scan_results), 12, muted, false))
             }
-            addView(space(10))
-            val networks: List<NetworkChoice> =
-                if (deviceNetworks.isNotEmpty()) {
-                    deviceNetworks.map { network ->
-                        NetworkChoice(
-                            network.ssid,
-                            "${network.ssid}  ${network.rssi} dBm",
-                            network.security,
-                            { chooseNetwork(network.ssid) }
-                        )
-                    }
-                } else {
-                    phoneNetworks.map { network ->
-                        NetworkChoice(
-                            network.ssid,
-                            "${network.ssid}  ${network.rssi} dBm",
-                            network.security,
-                            { chooseNetwork(network.ssid) }
-                        )
+            addView(space(14))
+            addView(label(getString(R.string.nearby_networks), 17, text, true))
+            addView(space(4))
+            addView(label(getString(R.string.wifi_band_hint), 13, muted, false))
+            addView(space(6))
+            val bandToggle = CheckBox(this@MainActivity).apply {
+                this.text = this@MainActivity.getString(R.string.wifi_show_5ghz)
+                setTextColor(text)
+                textSize = 14f
+                isChecked = showFiveGhz
+                setOnCheckedChangeListener { _, checked ->
+                    if (showFiveGhz != checked) {
+                        showFiveGhz = checked
+                        render()
                     }
                 }
-            if (networks.isEmpty() && !wifiScanStarted) {
-                addView(label(getString(R.string.wifi_scan_unavailable), 14, muted, false))
             }
+            addView(bandToggle)
+            if (deviceNetworks.isNotEmpty()) {
+                addView(label(getString(R.string.device_wifi_band_note), 12, muted, false))
+            }
+            addView(space(8))
+            val phoneSsids = phoneNetworks.mapTo(mutableSetOf()) { it.ssid }
+            val networks: List<NetworkChoice> = buildList {
+                phoneNetworks.forEach { network ->
+                    val band = WifiBandFilter.bandForFrequency(network.frequencyMHz)
+                    add(
+                        NetworkChoice(
+                            network.ssid,
+                            network.ssid,
+                            "${network.rssi} dBm · ${network.security.ifBlank { getString(R.string.open_network) }}",
+                            band,
+                            { chooseNetwork(network.ssid) }
+                        )
+                    )
+                }
+                deviceNetworks.filterNot { it.ssid in phoneSsids }.forEach { network ->
+                    add(
+                        NetworkChoice(
+                            network.ssid,
+                            network.ssid,
+                            "${network.rssi} dBm · ${network.security.ifBlank { getString(R.string.open_network) }}",
+                            WifiBandFilter.Band.UNKNOWN,
+                            { chooseNetwork(network.ssid) }
+                        )
+                    )
+                }
+            }.distinctBy { it.ssid to it.band }
+                .filter { WifiBandFilter.isVisible(it.band, showFiveGhz) }
             val networkRows = mutableListOf<View>()
+            if (networks.isEmpty() && !wifiScanStarted) {
+                addView(label(
+                    getString(
+                        when {
+                            phoneNetworks.isNotEmpty() -> R.string.wifi_no_24ghz
+                            deviceNetworks.isNotEmpty() -> R.string.wifi_unknown_band_empty
+                            else -> R.string.wifi_scan_unavailable
+                        }
+                    ),
+                    14,
+                    muted,
+                    false
+                ))
+            }
             if (networks.isNotEmpty()) {
                 val search = EditText(this@MainActivity).apply {
                     hint = this@MainActivity.getString(R.string.wifi_search_hint)
@@ -323,8 +390,11 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                     textSize = 14f
                     setTextColor(text)
                     setHintTextColor(muted)
-                    setBackgroundColor(0x00000000)
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    background = rounded(fieldBackground(), fieldBorder())
                 }
+                addView(label(getString(R.string.network_count, networks.size), 12, muted, false))
+                addView(space(6))
                 addView(search, matchWrap())
                 search.addTextChangedListener(SimpleTextWatcher { query ->
                     networkQuery = query
@@ -335,7 +405,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 })
             }
             networks.forEach { network ->
-                val row = networkRow(network.title, network.detail, surface, text, muted, network.select)
+                val row = networkRow(network, surface, text, muted)
                     .apply { tag = network.ssid }
                 networkRows += row
                 row.visibility =
@@ -343,7 +413,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 addView(row)
                 addView(space(5))
             }
-            addView(label(getString(R.string.wifi_security), 12, muted, false))
         })
         column.addView(space(10))
         column.addView(secondaryButton(getString(R.string.wifi_rescan)) {
@@ -356,6 +425,10 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         })
         column.addView(space(14))
         column.addView(card(surface) {
+            addView(label(getString(R.string.wifi_credentials), 17, text, true))
+            addView(space(12))
+            addView(label(getString(R.string.ssid_label), 12, muted, true))
+            addView(space(4))
             val ssidField = EditText(this@MainActivity).apply {
                 hint = this@MainActivity.getString(R.string.ssid_hint)
                 setSingleLine(true)
@@ -363,7 +436,8 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 textSize = 16f
                 setTextColor(text)
                 setHintTextColor(muted)
-                setBackgroundColor(0x00000000)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = rounded(fieldBackground(), fieldBorder())
                 addTextChangedListener(SimpleTextWatcher { ssid = it })
             }
             ssidInput = ssidField
@@ -375,6 +449,9 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 setOnCheckedChangeListener { _, checked -> hiddenNetwork = checked }
             }
             addView(hidden)
+            addView(space(8))
+            addView(label(getString(R.string.password_label), 12, muted, true))
+            addView(space(4))
             val pwField = EditText(this@MainActivity).apply {
                 hint = this@MainActivity.getString(R.string.password_hint)
                 setSingleLine(true)
@@ -382,14 +459,14 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 textSize = 16f
                 setTextColor(text)
                 setHintTextColor(muted)
-                setBackgroundColor(0x00000000)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = rounded(fieldBackground(), fieldBorder())
                 inputType = InputType.TYPE_CLASS_TEXT or
                     if (passwordVisible) InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
                     else InputType.TYPE_TEXT_VARIATION_PASSWORD
                 addTextChangedListener(SimpleTextWatcher { password = it })
             }
             passwordInput = pwField
-            addView(space(8))
             addView(pwField, matchWrap())
             passwordToggle = secondaryButton(
                 this@MainActivity.getString(
@@ -459,17 +536,35 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             }
         }
 
-    private fun networkRow(
-        title: String,
-        detail: String,
-        surface: Int,
-        text: Int,
-        muted: Int,
-        action: () -> Unit
-    ): View = clickableRow(surface) {
-        addView(label(title, 15, text, true))
-        addView(label(detail, 12, muted, false))
-    }.apply { setOnClickListener { action() } }
+    private fun networkRow(network: NetworkChoice, surface: Int, text: Int, muted: Int): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(fieldBackground(surface), fieldBorder())
+            isClickable = true
+            isFocusable = true
+            val details = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(label(network.title, 15, text, true))
+                addView(space(2))
+                addView(label(network.detail, 12, muted, false))
+            }
+            addView(details, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val badgeText = when (network.band) {
+                WifiBandFilter.Band.GHZ_2_4 -> getString(R.string.band_24ghz)
+                WifiBandFilter.Band.GHZ_5 -> getString(R.string.band_5ghz)
+                WifiBandFilter.Band.UNKNOWN -> getString(R.string.band_unknown)
+                WifiBandFilter.Band.OTHER -> getString(R.string.band_other)
+            }
+            val badge = label(badgeText, 11, 0xff267766.toInt(), true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(5), dp(8), dp(5))
+                background = rounded(0xffe7f3ee.toInt(), 0xffe7f3ee.toInt())
+            }
+            addView(badge)
+            setOnClickListener { network.select() }
+        }
 
     private fun clickableRow(surface: Int, content: LinearLayout.() -> Unit): LinearLayout =
         LinearLayout(this).apply {
@@ -777,8 +872,9 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             } else {
                 render()
             }
-        } else if (screen == Screen.WIFI) {
-            render()
+        } else {
+            if (screen == Screen.WIFI) render()
+            if (!phoneScanAttempted && phoneNetworks.isEmpty()) startPhoneWifiScan()
         }
     }
 
@@ -839,11 +935,75 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             setLineSpacing(dp(3).toFloat(), 1f)
         }
 
+    private fun appHeader(text: Int, muted: Int): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val mark = label("E", 19, 0xffffffff.toInt(), true).apply {
+                gravity = Gravity.CENTER
+                background = rounded(0xff267766.toInt(), 0xff267766.toInt(), 17)
+            }
+            addView(mark, LinearLayout.LayoutParams(dp(38), dp(38)))
+            val brandText = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(10), 0, 0, 0)
+                addView(label(getString(R.string.brand), 14, text, true))
+                addView(label(getString(R.string.brand_subtitle), 11, muted, false))
+            }
+            addView(brandText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val badge = label(getString(R.string.ble_badge), 11, 0xff267766.toInt(), true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                background = rounded(0xffe7f3ee.toInt(), 0xffe7f3ee.toInt())
+            }
+            addView(badge)
+        }
+
+    private fun flowProgress(surface: Int, text: Int, muted: Int): View {
+        val currentStep = when (screen) {
+            Screen.GUIDE, Screen.SCANNING -> 0
+            Screen.CONNECTING, Screen.WAITING_AUTH -> 1
+            Screen.WIFI, Screen.SUBMITTING -> 2
+            Screen.SUCCESS -> 3
+            Screen.ERROR -> if (currentDeviceState >= ImprovProtocol.AUTHORIZED) 2 else 1
+        }
+        val steps = listOf(
+            getString(R.string.step_device),
+            getString(R.string.step_authorize),
+            getString(R.string.step_wifi)
+        )
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(surface, fieldBorder(), 18)
+            steps.forEachIndexed { index, title ->
+                val active = currentStep >= index
+                val item = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    val marker = label(if (active) "✓" else (index + 1).toString(), 12,
+                        if (active) 0xffffffff.toInt() else muted, true).apply {
+                        gravity = Gravity.CENTER
+                        background = rounded(
+                            if (active) 0xff267766.toInt() else fieldBackground(),
+                            if (active) 0xff267766.toInt() else fieldBorder(),
+                            16
+                        )
+                    }
+                    addView(marker, LinearLayout.LayoutParams(dp(28), dp(28)))
+                    addView(space(5))
+                    addView(label(title, 11, if (active) text else muted, active))
+                }
+                addView(item, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+        }
+    }
+
     private fun card(color: Int, content: LinearLayout.() -> Unit): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(18), dp(18), dp(18))
-            background = rounded(color, color)
+            background = rounded(color, fieldBorder(), 22)
             content()
         }
 
@@ -856,8 +1016,14 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             isAllCaps = false
             textSize = 15f
             setTextColor(if (primary) 0xffffffff.toInt() else 0xff146b5b.toInt())
-            background = rounded(if (primary) 0xff146b5b.toInt() else 0xffe4eee9.toInt(), 0xff146b5b.toInt())
-            setPadding(dp(14), dp(9), dp(14), dp(9))
+            background = rounded(
+                if (primary) 0xff267766.toInt() else fieldBackground(),
+                if (primary) 0xff267766.toInt() else fieldBorder(),
+                16
+            )
+            minHeight = dp(54)
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+            elevation = if (primary) dp(2).toFloat() else 0f
             setOnClickListener { action() }
         }
 
@@ -865,12 +1031,24 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         layoutParams = LinearLayout.LayoutParams(1, dp(height))
     }
 
-    private fun rounded(color: Int, strokeColor: Int): GradientDrawable =
+    private fun rounded(color: Int, strokeColor: Int, radiusDp: Int = 20): GradientDrawable =
         GradientDrawable().apply {
             setColor(color)
-            cornerRadius = dp(18).toFloat()
-            setStroke(dp(1), strokeColor)
+            cornerRadius = dp(radiusDp).toFloat()
+            if (strokeColor != color) setStroke(dp(1), strokeColor)
         }
+
+    private fun fieldBackground(surface: Int? = null): Int {
+        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        return surface ?: if (dark) 0xff202d29.toInt() else 0xfff7f9f8.toInt()
+    }
+
+    private fun fieldBorder(): Int {
+        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        return if (dark) 0xff34443e.toInt() else 0xffe5ebe8.toInt()
+    }
 
     private fun matchWrap(): LinearLayout.LayoutParams =
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
