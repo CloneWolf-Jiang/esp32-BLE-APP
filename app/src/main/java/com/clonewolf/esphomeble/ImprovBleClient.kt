@@ -101,6 +101,18 @@ internal class ImprovBleClient(
         activeOperation = null
         listener.onFailure(Failure.PROTOCOL)
     }
+    private val connectionTimeout = Runnable {
+        if (gatt != null) {
+            listener.onFailure(Failure.CONNECT)
+            close()
+        }
+    }
+    private val serviceTimeout = Runnable {
+        if (serviceCharacteristics.isEmpty() && gatt != null) {
+            listener.onFailure(Failure.SERVICE)
+            close()
+        }
+    }
 
     fun startScan() {
         if (!hasScanPermission()) {
@@ -178,7 +190,11 @@ internal class ImprovBleClient(
                 @Suppress("DEPRECATION")
                 device.connectGatt(context, false, gattCallback)
             }
-            if (gatt == null) listener.onFailure(Failure.CONNECT)
+            if (gatt == null) {
+                listener.onFailure(Failure.CONNECT)
+            } else {
+                mainHandler.postDelayed(connectionTimeout, CONNECTION_TIMEOUT_MS)
+            }
         } catch (_: SecurityException) {
             listener.onFailure(Failure.PERMISSION)
         } catch (_: RuntimeException) {
@@ -225,6 +241,8 @@ internal class ImprovBleClient(
 
     fun close() {
         explicitlyClosed = true
+        mainHandler.removeCallbacks(connectionTimeout)
+        mainHandler.removeCallbacks(serviceTimeout)
         mainHandler.removeCallbacks(operationTimeout)
         operations.clear()
         activeOperation = null
@@ -261,6 +279,8 @@ internal class ImprovBleClient(
             }
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
+                    mainHandler.removeCallbacks(connectionTimeout)
+                    mainHandler.postDelayed(serviceTimeout, GATT_OPERATION_TIMEOUT_MS)
                     listener.onConnected()
                     try {
                         if (!gatt.discoverServices()) listener.onFailure(Failure.SERVICE)
@@ -275,6 +295,7 @@ internal class ImprovBleClient(
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            mainHandler.removeCallbacks(serviceTimeout)
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 listener.onFailure(Failure.SERVICE)
                 return
@@ -516,6 +537,7 @@ internal class ImprovBleClient(
 
     companion object {
         private const val SCAN_WINDOW_MS = 15_000L
+        private const val CONNECTION_TIMEOUT_MS = 15_000L
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
         private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }

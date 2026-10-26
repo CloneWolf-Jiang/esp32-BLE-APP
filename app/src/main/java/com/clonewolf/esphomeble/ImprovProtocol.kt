@@ -43,7 +43,8 @@ internal object ImprovProtocol {
         val ssidBytes = ssid.toByteArray(UTF8)
         val passwordBytes = password.toByteArray(UTF8)
         require(ssidBytes.isNotEmpty() && ssidBytes.size <= 32)
-        require(passwordBytes.size <= 63)
+        require(passwordBytes.size <= 63 ||
+            (passwordBytes.size == 64 && passwordBytes.all { it.toInt().toChar().digitToIntOrNull(16) != null }))
         val payloadLength = ssidBytes.size + passwordBytes.size + 2
         require(payloadLength <= 255)
         return frame(SEND_WIFI, byteArrayOf(ssidBytes.size.toByte()) + ssidBytes +
@@ -79,7 +80,7 @@ internal object ImprovProtocol {
             val rssi = entry[1].toIntOrNull()
                 ?: throw IllegalArgumentException("Invalid Wi-Fi signal value")
             WifiNetwork(entry[0], rssi, entry[2])
-        }.distinctBy { it.ssid }
+        }.groupBy { it.ssid }.map { (_, entries) -> entries.maxBy { it.rssi } }
     }
 
     fun isImprovAdvertisement(serviceUuids: List<UUID>?, serviceData: Map<UUID, ByteArray>?): Boolean {

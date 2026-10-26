@@ -9,9 +9,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.wifi.WifiManager
+import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -26,9 +27,15 @@ import android.widget.TextView
 import android.widget.Toast
 import java.util.LinkedHashMap
 
-class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Listener {
+internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Listener {
     private enum class Screen { GUIDE, SCANNING, CONNECTING, WAITING_AUTH, WIFI, SUBMITTING, SUCCESS, ERROR }
-    private data class FoundDevice(val device: BluetoothDevice, val name: String)
+    private data class FoundDevice(val device: BluetoothDevice, val name: String, val lastSeen: Long)
+    private data class NetworkChoice(
+        val ssid: String,
+        val title: String,
+        val detail: String,
+        val select: () -> Unit
+    )
 
     private lateinit var bleClient: ImprovBleClient
     private lateinit var wifiScanner: AndroidWifiScanner
@@ -41,10 +48,13 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
     private var password = ""
     private var hiddenNetwork = false
     private var passwordVisible = false
+    private var networkQuery = ""
     private var phoneWifiFresh = false
+    private var phoneScanAttempted = false
+    private var scanActive = false
     private var wifiScanStarted = false
     private var didReadState = false
-    private var capabilities = 0
+    private var capabilities = -1
     private var deviceNetworks: List<ImprovProtocol.WifiNetwork> = emptyList()
     private var phoneNetworks: List<AndroidWifiScanner.Network> = emptyList()
     private var scanFallbackUsed = false
@@ -54,6 +64,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
     private var passwordToggle: Button? = null
     private var scanTimeout: Runnable? = null
     private var provisioningTimeout: Runnable? = null
+    private var deviceExpiry: Runnable? = null
     private var pendingAction: (() -> Unit)? = null
     private var pendingWifiScan = false
 
@@ -71,6 +82,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
         password = ""
         scanTimeout?.let { root?.removeCallbacks(it) }
         provisioningTimeout?.let { root?.removeCallbacks(it) }
+        deviceExpiry?.let { root?.removeCallbacks(it) }
         super.onDestroy()
     }
 
@@ -121,7 +133,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
                 column.addView(card(surface) {
                     addView(label(getString(R.string.intro_body), 16, text, false))
                     addView(space(20))
-                    addButtonDiagram(text, muted)
+                    addView(buttonDiagram(text, muted))
                     addView(space(20))
                     addView(label(getString(R.string.button_window), 15, text, true))
                 })
@@ -134,7 +146,16 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
                 column.addView(label(getString(R.string.scan_title), 26, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
-                    addView(label(getString(R.string.scanning), 15, muted, false))
+                    addView(label(
+                        when {
+                            scanActive -> getString(R.string.scanning)
+                            foundDevices.isEmpty() -> getString(R.string.scan_empty)
+                            else -> getString(R.string.scan_done)
+                        },
+                        15,
+                        muted,
+                        false
+                    ))
                     addView(space(12))
                     if (foundDevices.isEmpty()) {
                         addView(label(getString(R.string.scan_empty), 15, text, false))
@@ -146,16 +167,24 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
                     }
                 })
                 column.addView(space(14))
-                column.addView(secondaryButton(getString(R.string.stop_scan)) {
-                    bleClient.stopScan()
-                    screen = Screen.GUIDE
-                    render()
+                column.addView(secondaryButton(
+                    getString(if (scanActive) R.string.stop_scan else R.string.retry)
+                ) {
+                    if (scanActive) {
+                        bleClient.stopScan()
+                        screen = Screen.GUIDE
+                        render()
+                    } else {
+                        beginBleScan()
+                    }
                 })
             }
             Screen.CONNECTING -> {
                 column.addView(label(getString(R.string.connecting), 22, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
+                    addView(label("${getString(R.string.device)}：$selectedDeviceName", 15, text, true))
+                    addView(space(6))
                     addView(label(connectionMessage, 15, muted, false))
                     addView(space(12))
                     addView(label(getString(R.string.waiting_auth), 15, text, false))
@@ -165,7 +194,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
                 column.addView(label(getString(R.string.waiting_auth), 23, text, true))
                 column.addView(space(14))
                 column.addView(card(surface) {
-                    addButtonDiagram(text, muted)
+                    addView(buttonDiagram(text, muted))
                     addView(space(18))
                     addView(label(getString(R.string.button_window), 15, muted, false))
                     addView(space(12))
@@ -225,23 +254,30 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
         column.addView(card(surface) {
             val source = when {
                 deviceNetworks.isNotEmpty() -> getString(R.string.wifi_source_device)
-                wifiScanStarted && phoneNetworks.isEmpty() -> getString(R.string.wifi_scanning)
-                else -> getString(R.string.wifi_source_phone)
+                wifiScanStarted -> getString(R.string.wifi_scanning)
+                phoneScanAttempted -> getString(R.string.wifi_source_phone)
+                else -> getString(R.string.device_scan_not_supported)
             }
             addView(label(source, 14, muted, true))
+            if (phoneScanAttempted && !phoneWifiFresh) {
+                addView(space(5))
+                addView(label(getString(R.string.cached_scan_results), 12, muted, false))
+            }
             addView(space(10))
-            val networks: List<Triple<String, String, () -> Unit>> =
+            val networks: List<NetworkChoice> =
                 if (deviceNetworks.isNotEmpty()) {
                     deviceNetworks.map { network ->
-                        Triple(
+                        NetworkChoice(
+                            network.ssid,
                             "${network.ssid}  ${network.rssi} dBm",
-                            "${network.security}",
+                            network.security,
                             { chooseNetwork(network.ssid) }
                         )
                     }
                 } else {
                     phoneNetworks.map { network ->
-                        Triple(
+                        NetworkChoice(
+                            network.ssid,
                             "${network.ssid}  ${network.rssi} dBm",
                             network.security,
                             { chooseNetwork(network.ssid) }
@@ -251,8 +287,33 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
             if (networks.isEmpty() && !wifiScanStarted) {
                 addView(label(getString(R.string.wifi_scan_unavailable), 14, muted, false))
             }
-            networks.forEach { (title, detail, onClick) ->
-                addView(networkRow(title, detail, surface, text, muted, onClick))
+            val networkRows = mutableListOf<View>()
+            if (networks.isNotEmpty()) {
+                val search = EditText(this@MainActivity).apply {
+                    hint = this@MainActivity.getString(R.string.wifi_search_hint)
+                    setSingleLine(true)
+                    setText(networkQuery)
+                    textSize = 14f
+                    setTextColor(text)
+                    setHintTextColor(muted)
+                    setBackgroundColor(0x00000000)
+                }
+                addView(search, matchWrap())
+                search.addTextChangedListener(SimpleTextWatcher { query ->
+                    networkQuery = query
+                    networkRows.forEach { row ->
+                        val name = row.tag as? String ?: ""
+                        row.visibility = if (name.contains(query, ignoreCase = true)) View.VISIBLE else View.GONE
+                    }
+                })
+            }
+            networks.forEach { network ->
+                val row = networkRow(network.title, network.detail, surface, text, muted, network.select)
+                    .apply { tag = network.ssid }
+                networkRows += row
+                row.visibility =
+                    if (network.ssid.contains(networkQuery, ignoreCase = true)) View.VISIBLE else View.GONE
+                addView(row)
                 addView(space(5))
             }
             addView(label(getString(R.string.wifi_security), 12, muted, false))
@@ -262,12 +323,14 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
             scanFallbackUsed = false
             phoneNetworks = emptyList()
             deviceNetworks = emptyList()
+            phoneWifiFresh = false
+            phoneScanAttempted = false
             discoverWifi()
         })
         column.addView(space(14))
         column.addView(card(surface) {
-            val ssidField = EditText(this).apply {
-                hint = getString(R.string.ssid_hint)
+            val ssidField = EditText(this@MainActivity).apply {
+                hint = this@MainActivity.getString(R.string.ssid_hint)
                 setSingleLine(true)
                 setText(ssid)
                 textSize = 16f
@@ -278,15 +341,15 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
             }
             ssidInput = ssidField
             addView(ssidField, matchWrap())
-            val hidden = CheckBox(this).apply {
-                text = getString(R.string.hidden_network)
+            val hidden = CheckBox(this@MainActivity).apply {
+                this.text = this@MainActivity.getString(R.string.hidden_network)
                 setTextColor(text)
                 isChecked = hiddenNetwork
                 setOnCheckedChangeListener { _, checked -> hiddenNetwork = checked }
             }
             addView(hidden)
-            val pwField = EditText(this).apply {
-                hint = getString(R.string.password_hint)
+            val pwField = EditText(this@MainActivity).apply {
+                hint = this@MainActivity.getString(R.string.password_hint)
                 setSingleLine(true)
                 setText(password)
                 textSize = 16f
@@ -302,7 +365,9 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
             addView(space(8))
             addView(pwField, matchWrap())
             passwordToggle = secondaryButton(
-                getString(if (passwordVisible) R.string.hide_password else R.string.show_password)
+                this@MainActivity.getString(
+                    if (passwordVisible) R.string.hide_password else R.string.show_password
+                )
             ) {
                 passwordVisible = !passwordVisible
                 render()
@@ -319,7 +384,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
         })
     }
 
-    private fun addButtonDiagram(text: Int, muted: Int) {
+    private fun buttonDiagram(text: Int, muted: Int): LinearLayout {
         val diagram = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -327,7 +392,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
         for (number in 1..3) {
             val isProvisionButton = number == 1
             val button = TextView(this).apply {
-                text = if (isProvisionButton) "1\n配网" else number.toString()
+                this.text = if (isProvisionButton) "1\n配网" else number.toString()
                 gravity = Gravity.CENTER
                 textSize = if (isProvisionButton) 16f else 20f
                 typeface = Typeface.DEFAULT_BOLD
@@ -342,7 +407,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
             if (number != 1) params.leftMargin = dp(12)
             diagram.addView(button, params)
         }
-        addView(diagram)
+        return diagram
     }
 
     private fun deviceRow(item: FoundDevice, surface: Int, text: Int, muted: Int): View =
@@ -354,8 +419,12 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
                 selectedDeviceName = item.name.ifBlank { "ESPHome 配网设备" }
                 connectionMessage = getString(R.string.connecting)
                 didReadState = false
-                capabilities = 0
+                capabilities = -1
                 deviceNetworks = emptyList()
+                phoneNetworks = emptyList()
+                phoneWifiFresh = false
+                phoneScanAttempted = false
+                networkQuery = ""
                 screen = Screen.CONNECTING
                 render()
                 bleClient.connect(item.device)
@@ -394,6 +463,10 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
             needed += Manifest.permission.ACCESS_FINE_LOCATION
         }
         requestNeededPermissions(needed) {
+            if (Build.VERSION.SDK_INT in 23..30 && !locationServicesEnabled()) {
+                showError(getString(R.string.location_disabled))
+                return@requestNeededPermissions
+            }
             val adapter = BluetoothAdapter.getDefaultAdapter()
             if (adapter == null) {
                 showError(getString(R.string.error_ble_not_supported))
@@ -408,6 +481,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
                 screen = Screen.SCANNING
                 render()
                 bleClient.startScan()
+                scheduleDeviceExpiry()
             }
         }
     }
@@ -415,6 +489,28 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
     private fun requestNeededPermissions(permissions: List<String>, action: () -> Unit) {
         val missing = permissions.distinct().filter {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        private fun scheduleDeviceExpiry() {
+            deviceExpiry?.let { root?.removeCallbacks(it) }
+            val expiry = object : Runnable {
+                override fun run() {
+                    if (!scanActive || screen != Screen.SCANNING) return
+                    val cutoff = SystemClock.elapsedRealtime() - DEVICE_LOST_AFTER_MS
+                    val iterator = foundDevices.entries.iterator()
+                    var changed = false
+                    while (iterator.hasNext()) {
+                        if (iterator.next().value.lastSeen < cutoff) {
+                            iterator.remove()
+                            changed = true
+                        }
+                    }
+                    if (changed) render()
+                    root?.postDelayed(this, DEVICE_EXPIRY_CHECK_MS)
+                }
+            }
+            deviceExpiry = expiry
+            root?.postDelayed(expiry, DEVICE_EXPIRY_CHECK_MS)
         }
         if (missing.isEmpty()) {
             action()
@@ -482,9 +578,9 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
         pendingWifiScan = true
         val permissions = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 23) permissions += Manifest.permission.ACCESS_FINE_LOCATION
-        if (Build.VERSION.SDK_INT >= 33) permissions += Manifest.permission.NEARBY_WIFI_DEVICES
         requestNeededPermissions(permissions) {
             pendingWifiScan = false
+            phoneScanAttempted = true
             wifiScanStarted = true
             render()
             wifiScanner.scan()
@@ -493,13 +589,14 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
 
     private fun chooseNetwork(name: String) {
         ssid = name
+        networkQuery = ""
         hiddenNetwork = false
         render()
         ssidInput?.requestFocus()
     }
 
     private fun submitCredentials() {
-        val networkName = ssid.trim()
+        val networkName = ssid
         if (networkName.isEmpty()) {
             Toast.makeText(this, R.string.ssid_required, Toast.LENGTH_SHORT).show()
             ssidInput?.requestFocus()
@@ -509,7 +606,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
             Toast.makeText(this, R.string.ssid_too_long, Toast.LENGTH_SHORT).show()
             return
         }
-        if (password.toByteArray(Charsets.UTF_8).size > 63) {
+        if (!isValidPassword(password)) {
             Toast.makeText(this, R.string.password_too_long, Toast.LENGTH_SHORT).show()
             return
         }
@@ -549,15 +646,18 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
         didReadState = false
         deviceNetworks = emptyList()
         phoneNetworks = emptyList()
+        phoneWifiFresh = false
+        phoneScanAttempted = false
         foundDevices.clear()
+        deviceExpiry?.let { root?.removeCallbacks(it) }
         scanTimeout?.let { root?.removeCallbacks(it) }
         provisioningTimeout?.let { root?.removeCallbacks(it) }
     }
 
     override fun onScanState(scanning: Boolean) {
-        if (!scanning && screen == Screen.SCANNING && foundDevices.isEmpty()) {
-            render()
-        }
+        scanActive = scanning
+        if (!scanning) deviceExpiry?.let { root?.removeCallbacks(it) }
+        if (screen == Screen.SCANNING) render()
     }
 
     override fun onDeviceFound(device: BluetoothDevice, name: String) {
@@ -568,7 +668,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
         }
         val previous = foundDevices[key]
         val newName = name.ifBlank { previous?.name.orEmpty() }
-        foundDevices[key] = FoundDevice(device, newName)
+        foundDevices[key] = FoundDevice(device, newName, SystemClock.elapsedRealtime())
         if (screen == Screen.SCANNING) render()
     }
 
@@ -586,10 +686,10 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
                 render()
             }
             ImprovProtocol.AUTHORIZED -> {
-                if (screen != Screen.SUBMITTING && screen != Screen.SUCCESS) {
-                    screen = Screen.WIFI
-                    if (deviceNetworks.isEmpty() && phoneNetworks.isEmpty()) discoverWifi()
-                    else render()
+                if (capabilities >= 0 &&
+                    (screen == Screen.CONNECTING || screen == Screen.WAITING_AUTH)
+                ) {
+                    enterWifiScreen()
                 }
             }
             ImprovProtocol.PROVISIONING -> {
@@ -617,6 +717,15 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
 
     override fun onCapabilities(capabilities: Int) {
         this.capabilities = capabilities
+        if (currentDeviceState == ImprovProtocol.AUTHORIZED && screen == Screen.CONNECTING) {
+            enterWifiScreen()
+        }
+    }
+
+    private fun enterWifiScreen() {
+        if (screen == Screen.SUBMITTING || screen == Screen.SUCCESS || screen == Screen.ERROR) return
+        screen = Screen.WIFI
+        if (deviceNetworks.isEmpty() && phoneNetworks.isEmpty()) discoverWifi() else render()
     }
 
     override fun onWifiNetworks(networks: List<ImprovProtocol.WifiNetwork>) {
@@ -670,6 +779,7 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
     override fun onScanResults(networks: List<AndroidWifiScanner.Network>, fresh: Boolean) {
         phoneNetworks = networks
         phoneWifiFresh = fresh
+        phoneScanAttempted = true
         wifiScanStarted = false
         if (screen == Screen.WIFI) render()
     }
@@ -729,10 +839,33 @@ class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Li
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    private fun locationServicesEnabled(): Boolean {
+        val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return try {
+            if (Build.VERSION.SDK_INT >= 28) {
+                manager.isLocationEnabled
+            } else {
+                @Suppress("DEPRECATION")
+                manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                    manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+            }
+
+            private fun isValidPassword(value: String): Boolean {
+                val bytes = value.toByteArray(Charsets.UTF_8)
+                return bytes.size <= 63 ||
+                    (bytes.size == 64 && value.all { it.digitToIntOrNull(16) != null })
+            }
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
+
     companion object {
         private const val REQUEST_ENABLE_BLUETOOTH = 71
         private const val REQUEST_PERMISSIONS = 72
         private const val DEVICE_WIFI_SCAN_TIMEOUT_MS = 12_000L
+        private const val DEVICE_LOST_AFTER_MS = 8_000L
+        private const val DEVICE_EXPIRY_CHECK_MS = 3_000L
         private const val PROVISION_TIMEOUT_MS = 45_000L
     }
 }
