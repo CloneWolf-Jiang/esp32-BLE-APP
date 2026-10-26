@@ -34,6 +34,20 @@ jobs:
           PY
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
+      - name: Create temporary debug signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair -noprompt \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storetype JKS \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -storepass android \
+            -keypass android
+
       - name: Build and test APK
         run: ./gradlew --no-daemon clean testDebugUnitTest assembleDebug
 
