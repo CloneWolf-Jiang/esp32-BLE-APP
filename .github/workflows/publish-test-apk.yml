@@ -1,4 +1,4 @@
-name: Publish test APK
+name: Build signed release APK
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   publish:
-    name: Build and upload Android 5–16 test APK
+    name: Build and upload signed Android 5–16 APK
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -34,50 +34,54 @@ jobs:
           PY
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Create temporary debug signing key
+      - name: Build, sign, and verify release APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          mkdir -p "$HOME/.android"
-          keytool -genkeypair -noprompt \
-            -keystore "$HOME/.android/debug.keystore" \
-            -storetype JKS \
-            -alias androiddebugkey \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US" \
-            -storepass android \
-            -keypass android
+          set -euo pipefail
+          : "${ANDROID_KEYSTORE_BASE64:?Missing Actions secret ANDROID_KEYSTORE_BASE64}"
+          : "${ANDROID_KEYSTORE_PASSWORD:?Missing Actions secret ANDROID_KEYSTORE_PASSWORD}"
+          : "${ANDROID_KEY_ALIAS:?Missing Actions secret ANDROID_KEY_ALIAS}"
+          : "${ANDROID_KEY_PASSWORD:?Missing Actions secret ANDROID_KEY_PASSWORD}"
 
-      - name: Build and test APK
-        run: ./gradlew --no-daemon clean testDebugUnitTest assembleDebug
+          KEYSTORE_PATH="$RUNNER_TEMP/release-signing.jks"
+          trap 'rm -f "$KEYSTORE_PATH"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          keytool -list \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" >/dev/null
 
-      - name: Export debug signing certificate
-        run: |
+          export RELEASE_STORE_FILE="$KEYSTORE_PATH"
+          export RELEASE_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+          export RELEASE_KEY_ALIAS="$ANDROID_KEY_ALIAS"
+          export RELEASE_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
+          ./gradlew --no-daemon clean testDebugUnitTest assembleRelease
+
           mkdir -p release
-          cp app/build/outputs/apk/debug/app-debug.apk release/esp32-ble-app-test.apk
+          cp app/build/outputs/apk/release/app-release.apk release/esp32-ble-app-release.apk
           keytool -exportcert -rfc \
-            -keystore "$HOME/.android/debug.keystore" \
-            -alias androiddebugkey \
-            -storepass android \
-            -file release/esp32-ble-test-cert.pem
-
-      - name: Verify SDK compatibility and APK signature
-        run: |
+            -keystore "$KEYSTORE_PATH" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -file release/esp32-ble-release-cert.pem
           SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          test "$("$SDK/cmdline-tools/latest/bin/apkanalyzer" manifest min-sdk release/esp32-ble-app-test.apk)" = "21"
-          test "$("$SDK/cmdline-tools/latest/bin/apkanalyzer" manifest target-sdk release/esp32-ble-app-test.apk)" = "36"
-          "$SDK/build-tools/36.0.0/apksigner" verify release/esp32-ble-app-test.apk
-
-      - name: Create SHA-256 checksums
-        run: sha256sum release/esp32-ble-app-test.apk release/esp32-ble-test-cert.pem > release/SHA256SUMS.txt
+          test "$("$SDK/cmdline-tools/latest/bin/apkanalyzer" manifest min-sdk release/esp32-ble-app-release.apk)" = "21"
+          test "$("$SDK/cmdline-tools/latest/bin/apkanalyzer" manifest target-sdk release/esp32-ble-app-release.apk)" = "36"
+          "$SDK/build-tools/36.0.0/apksigner" verify release/esp32-ble-app-release.apk
+          sha256sum release/esp32-ble-app-release.apk release/esp32-ble-release-cert.pem > release/SHA256SUMS.txt
 
       - name: Upload downloadable files
         uses: actions/upload-artifact@v4
         with:
-          name: esphome-ble-app-test
+          name: esphome-ble-app-release
           path: |
-            release/esp32-ble-app-test.apk
-            release/esp32-ble-test-cert.pem
+            release/esp32-ble-app-release.apk
+            release/esp32-ble-release-cert.pem
             release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
