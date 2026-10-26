@@ -26,10 +26,9 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import java.util.LinkedHashMap
 
-internal class MainActivity : AppCompatActivity(), ImprovBleClient.Listener, AndroidWifiScanner.Listener {
+internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Listener {
     private enum class Screen { GUIDE, SCANNING, CONNECTING, WAITING_AUTH, WIFI, SUBMITTING, SUCCESS, ERROR }
     private data class FoundDevice(val device: BluetoothDevice, val name: String, val lastSeen: Long)
     private data class NetworkChoice(

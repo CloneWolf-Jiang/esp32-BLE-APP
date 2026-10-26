@@ -14,7 +14,7 @@
 
 ## 构建
 
-需要 JDK 17 和 Android SDK Platform 36。
+需要 JDK 17 和 Android SDK Platform 36。测试 APK 使用临时自签名密钥签名；证书公开文件位于 `release/esp32-ble-test-cert.pem`。私钥不会提交到仓库，故该 APK 只用于首次安装测试，无法用同一签名发布后续覆盖升级。
 
 ```sh
 ./gradlew testDebugUnitTest
@@ -22,6 +22,17 @@
 ```
 
 调试 APK（构建成功后）：`app/build/outputs/apk/debug/app-debug.apk`。本仓库未配置正式签名密钥。
+
+## 可下载测试包
+
+- 测试 APK：[`release/esp32-ble-app-test.apk`](release/esp32-ble-app-test.apk)
+- 自签名公钥证书：[`release/esp32-ble-test-cert.pem`](release/esp32-ble-test-cert.pem)
+- APK SHA-256：`677933841adb464a2c19e9e59bb625de698b9a4f246ff6870aff86bbe5cb92a9`
+- 证书 SHA-256 指纹：`EF:5E:C0:3F:70:3D:61:12:38:7E:37:43:89:00:D9:C5:C7:F9:4E:DF:26:FC:66:54:DE:6E:A6:F4:22:BD:21:93`
+
+APK 已用 Android SDK 本地工具编译为 DEX、打包、对齐，并通过 APK Signature Scheme v2/v3 验签。当前执行环境无法从 Google Maven 下载 Android Gradle Plugin，因此没有声称 Gradle 任务构建成功；也没有可连接的 Android 设备执行安装或蓝牙实测。测试 APK 以 `com.clonewolf.esphomeble`、`versionCode 1` 标识。
+
+证书是自签名测试证书，不受系统或应用商店信任。相同签名可用于验证此次 APK；为避免把私钥放进代码仓库，私钥未随证书或 APK 发布。卸载后重装不受影响，但以后不能用另一个签名的 APK 覆盖升级这次安装。
 
 ## Improv BLE 核实结果
 
@@ -42,7 +53,7 @@
 
 ## ESPHome 固件要求与限制
 
-仓库当前没有 ESPHome YAML、GPIO 接线信息或固件版本，因而无法确认实际设备已实现 5 秒长按授权，也没有进行真实设备验证。**仅安装 APP 不会让物理按键具备授权功能。**固件需使用与独立 1 号按键对应的 `binary_sensor` 作为 `improv_ble.authorizer`，并对该传感器配置稳定的 5 秒按下判定；授权持续时间设为 `1min`。应使用独立授权传感器，不让它驱动或复用继电器自动化，并核对按键有效电平及去抖方式。
+用户已在实际固件上验证蓝牙物理授权可用。设备没有指示灯等可视反馈；APP 不能观察固件内部的按键动作，只能读取真实 Improv BLE 授权状态后继续。仓库仍没有 ESPHome YAML、GPIO 接线信息或固件版本，无法独立核验按键引脚和继电器自动化。**仅安装 APP 不会让物理按键具备授权功能。**固件应使用与独立 1 号按键对应的 `binary_sensor` 作为 `improv_ble.authorizer`，并将授权持续时间设为 `1min`。
 
 ESPHome 当前官方源码中，`improv_ble` 的 Capabilities 只设置 Identify 位（可选状态灯）；它没有声明或处理 `GET_WIFI_NETWORKS`，该命令会落入未知 RPC。因此本应用会转用手机 Wi-Fi 扫描，并始终保留手动 SSID 输入。设备端扫描能力按已声明的 bit 2 判断，不根据设备名推测。
 
@@ -67,4 +78,4 @@ improv_ble:
 - Android 13+ 的 `NEARBY_WIFI_DEVICES` 适用于部分 Wi-Fi 设备操作，但不是读取扫描结果的替代权限，因此此处不以它绕过定位权限。
 - 应用配置 `targetSdk 36`，不得通过降 target 绕过权限要求。发布到应用市场前，需复核当时的目标 API 要求。
 
-本环境尚未进行模拟器或实体设备测试。API 21、Android 6–11、Android 12+、Android 13+ 和不同厂商 BLE/Wi-Fi 行为均应按提示词的验收清单实测；构建结果不能替代这些验证。
+用户已确认固件蓝牙授权实际测试通过；Android APP 的运行时 BLE/Wi-Fi 兼容性仍需在 API 21、Android 6–11、Android 12+、Android 13+ 和不同厂商设备上按验收清单测试。
