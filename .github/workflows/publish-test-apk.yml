@@ -1,0 +1,30 @@
+name: Publish test APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Upload signed test APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release files
+        uses: actions/checkout@v4
+
+      - name: Create SHA-256 checksums
+        run: sha256sum release/esp32-ble-app-test.apk release/esp32-ble-test-cert.pem > release/SHA256SUMS.txt
+
+      - name: Upload downloadable files
+        uses: actions/upload-artifact@v4
+        with:
+          name: esphome-ble-app-test
+          path: |
+            release/esp32-ble-app-test.apk
+            release/esp32-ble-test-cert.pem
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
