@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">ESPHome Provisioning</string>
+    <string name="brand">ESPHome · BLE Provisioning</string>
+    <string name="intro_title">Put your switch in provisioning mode</string>
+    <string name="intro_body">Press and hold the leftmost button (button 1) for 5 seconds. The device has no light, display, or buzzer feedback.</string>
+    <string name="button_window">After release, the authorization window lasts 1 minute</string>
+    <string name="start_scan">Start scanning</string>
+</resources>
