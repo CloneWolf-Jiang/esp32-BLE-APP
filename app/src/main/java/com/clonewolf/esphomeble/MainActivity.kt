@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -25,9 +26,10 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import java.util.LinkedHashMap
 
-internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiScanner.Listener {
+internal class MainActivity : AppCompatActivity(), ImprovBleClient.Listener, AndroidWifiScanner.Listener {
     private enum class Screen { GUIDE, SCANNING, CONNECTING, WAITING_AUTH, WIFI, SUBMITTING, SUCCESS, ERROR }
     private data class FoundDevice(val device: BluetoothDevice, val name: String, val lastSeen: Long)
     private data class NetworkChoice(
@@ -41,6 +43,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     private lateinit var wifiScanner: AndroidWifiScanner
     private val foundDevices = LinkedHashMap<String, FoundDevice>()
     private var screen = Screen.GUIDE
+    private var guideReturnScreen: Screen? = null
     private var selectedDeviceName = ""
     private var connectionMessage = ""
     private var errorMessage = ""
@@ -86,12 +89,18 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         super.onDestroy()
     }
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        render()
+    }
+
     override fun onBackPressed() {
         if (screen == Screen.GUIDE) {
             super.onBackPressed()
             return
         }
         if (screen == Screen.WIFI || screen == Screen.WAITING_AUTH) {
+            guideReturnScreen = screen
             screen = Screen.GUIDE
             render()
         } else {
@@ -138,7 +147,21 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                     addView(label(getString(R.string.button_window), 15, text, true))
                 })
                 column.addView(space(18))
-                column.addView(primaryButton(getString(R.string.start_scan)) { beginBleScan() })
+                column.addView(primaryButton(
+                    getString(if (guideReturnScreen == null) R.string.start_scan else R.string.return_flow)
+                ) {
+                    if (guideReturnScreen == null) {
+                        beginBleScan()
+                    } else {
+                        screen = if (currentDeviceState == ImprovProtocol.AUTHORIZED) {
+                            Screen.WIFI
+                        } else {
+                            Screen.WAITING_AUTH
+                        }
+                        guideReturnScreen = null
+                        render()
+                    }
+                })
                 column.addView(space(8))
                 column.addView(label(getString(R.string.intro_body), 13, muted, false))
             }
@@ -202,8 +225,13 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 })
                 column.addView(space(14))
                 column.addView(secondaryButton(getString(R.string.show_guide)) {
+                    guideReturnScreen = Screen.WAITING_AUTH
                     screen = Screen.GUIDE
                     render()
+                })
+                column.addView(space(8))
+                column.addView(secondaryButton(getString(R.string.check_authorization)) {
+                    bleClient.readCurrentState()
                 })
             }
             Screen.WIFI -> renderWifiScreen(column, surface, text, muted)
@@ -379,6 +407,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         column.addView(primaryButton(getString(R.string.submit)) { submitCredentials() })
         column.addView(space(8))
         column.addView(secondaryButton(getString(R.string.show_guide)) {
+            guideReturnScreen = Screen.WIFI
             screen = Screen.GUIDE
             render()
         })
@@ -478,6 +507,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 }
             } else {
                 foundDevices.clear()
+                guideReturnScreen = null
                 screen = Screen.SCANNING
                 render()
                 bleClient.startScan()
@@ -490,34 +520,34 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         val missing = permissions.distinct().filter {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
-
-        private fun scheduleDeviceExpiry() {
-            deviceExpiry?.let { root?.removeCallbacks(it) }
-            val expiry = object : Runnable {
-                override fun run() {
-                    if (!scanActive || screen != Screen.SCANNING) return
-                    val cutoff = SystemClock.elapsedRealtime() - DEVICE_LOST_AFTER_MS
-                    val iterator = foundDevices.entries.iterator()
-                    var changed = false
-                    while (iterator.hasNext()) {
-                        if (iterator.next().value.lastSeen < cutoff) {
-                            iterator.remove()
-                            changed = true
-                        }
-                    }
-                    if (changed) render()
-                    root?.postDelayed(this, DEVICE_EXPIRY_CHECK_MS)
-                }
-            }
-            deviceExpiry = expiry
-            root?.postDelayed(expiry, DEVICE_EXPIRY_CHECK_MS)
-        }
         if (missing.isEmpty()) {
             action()
         } else {
             pendingAction = action
             requestPermissions(missing.toTypedArray(), REQUEST_PERMISSIONS)
         }
+    }
+
+    private fun scheduleDeviceExpiry() {
+        deviceExpiry?.let { root?.removeCallbacks(it) }
+        val expiry = object : Runnable {
+            override fun run() {
+                if (!scanActive || screen != Screen.SCANNING) return
+                val cutoff = SystemClock.elapsedRealtime() - DEVICE_LOST_AFTER_MS
+                val iterator = foundDevices.entries.iterator()
+                var changed = false
+                while (iterator.hasNext()) {
+                    if (iterator.next().value.lastSeen < cutoff) {
+                        iterator.remove()
+                        changed = true
+                    }
+                }
+                if (changed) render()
+                root?.postDelayed(this, DEVICE_EXPIRY_CHECK_MS)
+            }
+        }
+        deviceExpiry = expiry
+        root?.postDelayed(expiry, DEVICE_EXPIRY_CHECK_MS)
     }
 
     @Deprecated("Uses the system Bluetooth enable prompt for older Android versions.")
@@ -682,13 +712,18 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         didReadState = true
         when (state) {
             ImprovProtocol.AUTHORIZATION_REQUIRED -> {
+                if (screen == Screen.GUIDE && guideReturnScreen != null) {
+                    guideReturnScreen = null
+                }
                 screen = Screen.WAITING_AUTH
                 render()
             }
             ImprovProtocol.AUTHORIZED -> {
                 if (capabilities >= 0 &&
-                    (screen == Screen.CONNECTING || screen == Screen.WAITING_AUTH)
+                    (screen == Screen.CONNECTING || screen == Screen.WAITING_AUTH ||
+                        (screen == Screen.GUIDE && guideReturnScreen != null))
                 ) {
+                    guideReturnScreen = null
                     enterWifiScreen()
                 }
             }
@@ -717,7 +752,11 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
 
     override fun onCapabilities(capabilities: Int) {
         this.capabilities = capabilities
-        if (currentDeviceState == ImprovProtocol.AUTHORIZED && screen == Screen.CONNECTING) {
+        if (currentDeviceState == ImprovProtocol.AUTHORIZED &&
+            (screen == Screen.CONNECTING || screen == Screen.WAITING_AUTH ||
+                (screen == Screen.GUIDE && guideReturnScreen != null))
+        ) {
+            guideReturnScreen = null
             enterWifiScreen()
         }
     }
@@ -849,15 +888,15 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
                     manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
             }
-
-            private fun isValidPassword(value: String): Boolean {
-                val bytes = value.toByteArray(Charsets.UTF_8)
-                return bytes.size <= 63 ||
-                    (bytes.size == 64 && value.all { it.digitToIntOrNull(16) != null })
-            }
         } catch (_: RuntimeException) {
             false
         }
+    }
+
+    private fun isValidPassword(value: String): Boolean {
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        return bytes.size <= 63 ||
+            (bytes.size == 64 && value.all { it.digitToIntOrNull(16) != null })
     }
 
     companion object {

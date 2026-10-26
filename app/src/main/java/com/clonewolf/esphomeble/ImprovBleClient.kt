@@ -218,9 +218,12 @@ internal class ImprovBleClient(
             listener.onFailure(Failure.WRITE)
             return
         }
-        enqueue(Operation(OperationType.WRITE, characteristic = command) {
-            writeCharacteristic(command, packet)
-        })
+        packet.asList().chunked(ATT_WRITE_PAYLOAD_BYTES).forEach { fragment ->
+            val bytes = fragment.toByteArray()
+            enqueue(Operation(OperationType.WRITE, characteristic = command) {
+                writeCharacteristic(command, bytes)
+            })
+        }
     }
 
     fun scanWifiNetworks() {
@@ -236,6 +239,17 @@ internal class ImprovBleClient(
         wifiScanPending = true
         enqueue(Operation(OperationType.WRITE, characteristic = command) {
             writeCharacteristic(command, ImprovProtocol.command(ImprovProtocol.GET_WIFI_NETWORKS))
+        })
+    }
+
+    fun readCurrentState() {
+        val characteristic = serviceCharacteristics[ImprovProtocol.STATUS]
+        if (characteristic == null) {
+            listener.onFailure(Failure.PROTOCOL)
+            return
+        }
+        enqueue(Operation(OperationType.READ, characteristic = characteristic) {
+            readCharacteristic(characteristic)
         })
     }
 
@@ -539,6 +553,7 @@ internal class ImprovBleClient(
         private const val SCAN_WINDOW_MS = 15_000L
         private const val CONNECTION_TIMEOUT_MS = 15_000L
         private const val GATT_OPERATION_TIMEOUT_MS = 10_000L
+        private const val ATT_WRITE_PAYLOAD_BYTES = 20
         private val CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 }

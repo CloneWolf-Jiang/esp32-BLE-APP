@@ -31,13 +31,14 @@
 | --- | --- |
 | 服务 | `00467768-6228-2272-4663-277478268000` |
 | 状态 / 错误 / RPC 命令 / RPC 响应 / 能力 | UUID 后缀依次为 `8001` / `8002` / `8003` / `8004` / `8005` |
+| 特征属性 | 状态、错误、RPC 响应为 Read + Notify；RPC 命令为 Write；Capabilities 为 Read |
 | 状态 | `01` 等待授权，`02` 已授权，`03` 配网中，`04` 已配网 |
 | 错误 | `00` 无错误，`01` RPC 无效，`02` 未知 RPC，`03` 无法连接，`04` 未授权 |
 | RPC | `01` 提交 Wi-Fi，`02` Identify，`03` 设备信息，`04` 扫描 Wi-Fi |
 | Capabilities | bit 0 Identify，bit 1 设备信息，bit 2 Wi-Fi 扫描 |
 | RPC 帧 | 命令字节、数据长度、数据、低 8 位加和校验；字符串以 1 字节长度前缀编码 |
 
-特征属性及数据格式由协议层校验。订阅通知后再读取状态，避免漏掉状态变化；所有 GATT 读写均串行化。
+特征属性及数据格式由协议层校验。订阅通知后再读取状态，避免漏掉状态变化；所有 GATT 读写均串行化。Wi-Fi RPC 按默认 ATT MTU 的 20 字节安全分段顺序写入，兼容 ESPHome 累积分片后解析的实现。Improv BLE 没有独立的数值版本特征。
 
 ## ESPHome 固件要求与限制
 
@@ -46,6 +47,16 @@
 ESPHome 当前官方源码中，`improv_ble` 的 Capabilities 只设置 Identify 位（可选状态灯）；它没有声明或处理 `GET_WIFI_NETWORKS`，该命令会落入未知 RPC。因此本应用会转用手机 Wi-Fi 扫描，并始终保留手动 SSID 输入。设备端扫描能力按已声明的 bit 2 判断，不根据设备名推测。
 
 配置中应明确设置 `authorizer` 和 `authorized_duration: 1min`。未配置 `authorizer` 的 ESPHome 实例会以 `AUTHORIZED` 初始状态运行，因此必须在目标固件中确认物理授权配置；BLE 协议不能告诉 APP 授权来自按键还是固件未启用授权。
+
+组件级配置应指向单独的 1 号按键授权传感器：
+
+```yaml
+improv_ble:
+  authorizer: provision_button
+  authorized_duration: 1min
+```
+
+`provision_button` 的 GPIO、有效电平和上拉/下拉必须按实际原理图确定；其输入应配置稳定按下 5 秒后才置为有效。不要把短按传感器直接复用为会切换继电器的自动化触发器。拿到现有 YAML 和硬件引脚图后，才能给出安全、可刷写的完整固件改动。
 
 固件方案必须以实际引脚图和现有 YAML 为准；在缺少这些资料时，本仓库不提供可直接刷写的 GPIO YAML，也不应猜测或覆盖现有继电器配置。
 

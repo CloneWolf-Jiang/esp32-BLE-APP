@@ -5,6 +5,7 @@
     <string name="intro_body">请持续长按开关最左侧的 1 号按键 5 秒。设备没有灯光、屏幕或蜂鸣器反馈。</string>
     <string name="button_window">松开后，授权窗口有效 1 分钟</string>
     <string name="start_scan">开始扫描</string>
+    <string name="return_flow">返回配网流程</string>
     <string name="show_guide">重新查看指引</string>
     <string name="scan_title">附近的配网设备</string>
     <string name="scan_empty">尚未发现设备。确认设备已通电并处于蓝牙配网模式。</string>
@@ -16,6 +17,7 @@
     <string name="connecting">正在连接并读取 Improv BLE 服务…</string>
     <string name="waiting_auth">已连接，但设备尚未授权。请长按开关最左侧的 1 号按键 5 秒；APP 不会检测按键本身。</string>
     <string name="authorized">设备已通过协议报告授权，可以选择 Wi-Fi。</string>
+    <string name="check_authorization">重新检查设备授权状态</string>
     <string name="wifi_title">选择 Wi-Fi 网络</string>
     <string name="wifi_source_device">网络来自设备端 Improv 扫描</string>
     <string name="wifi_source_phone">网络来自手机系统扫描</string>

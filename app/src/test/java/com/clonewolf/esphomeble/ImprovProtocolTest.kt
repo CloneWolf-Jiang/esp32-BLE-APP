@@ -27,8 +27,12 @@ class ImprovProtocolTest {
     fun responseParserExtractsTripletsAndDeduplicatesNetworks() {
         val response = response(
             ImprovProtocol.GET_WIFI_NETWORKS,
-            listOf("Home", "-42", "[WPA2-PSK]"),
-            listOf("Home", "-60", "[WPA2-PSK]")
+            "Home",
+            "-42",
+            "[WPA2-PSK]",
+            "Home",
+            "-60",
+            "[WPA2-PSK]"
         )
 
         val result = ImprovProtocol.parseResponse(response)
@@ -42,7 +46,7 @@ class ImprovProtocolTest {
 
     @Test
     fun responseParserRejectsInvalidChecksumAndLength() {
-        val valid = response(ImprovProtocol.SEND_WIFI, "http://device".let(::listOf))
+        val valid = response(ImprovProtocol.SEND_WIFI, "http://device")
 
         assertTrue(runCatching { ImprovProtocol.parseResponse(valid.copyOf().apply { this[lastIndex]++ }) }.isFailure)
         assertTrue(runCatching { ImprovProtocol.parseResponse(valid.copyOf().apply { this[1]++ }) }.isFailure)
