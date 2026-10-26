@@ -80,6 +80,18 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         render()
     }
 
+    private fun accentColor(): Int {
+        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        return if (dark) 0xff79d6c2.toInt() else 0xff267766.toInt()
+    }
+
+    private fun accentSurface(): Int {
+        val dark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        return if (dark) 0xff253b35.toInt() else 0xffe7f3ee.toInt()
+    }
+
     override fun onDestroy() {
         wifiScanner.close()
         bleClient.close()
@@ -149,7 +161,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 column.addView(label(getString(R.string.guide_subtitle), 15, muted, false))
                 column.addView(space(20))
                 column.addView(card(surface) {
-                    addView(label(getString(R.string.guide_step), 13, 0xff267766.toInt(), true))
+                    addView(label(getString(R.string.guide_step), 13, accentColor(), true))
                     addView(space(10))
                     addView(label(getString(R.string.intro_body), 16, text, false))
                     addView(space(20))
@@ -219,7 +231,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 column.addView(label(getString(R.string.connecting), 22, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
-                    addView(label(getString(R.string.connecting_step), 13, 0xff267766.toInt(), true))
+                    addView(label(getString(R.string.connecting_step), 13, accentColor(), true))
                     addView(space(10))
                     addView(label("${getString(R.string.device)}：$selectedDeviceName", 15, text, true))
                     addView(space(6))
@@ -254,7 +266,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 column.addView(label(getString(R.string.submitting), 22, text, true))
                 column.addView(space(12))
                 column.addView(card(surface) {
-                    addView(label(getString(R.string.connecting_step), 13, 0xff267766.toInt(), true))
+                    addView(label(getString(R.string.connecting_step), 13, accentColor(), true))
                     addView(space(10))
                     addView(label(getString(R.string.provisioning), 16, muted, false))
                     addView(space(10))
@@ -262,7 +274,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 })
             }
             Screen.SUCCESS -> {
-                column.addView(label(getString(R.string.success_eyebrow), 13, 0xff267766.toInt(), true))
+                column.addView(label(getString(R.string.success_eyebrow), 13, accentColor(), true))
                 column.addView(space(8))
                 column.addView(label(getString(R.string.success_title), 27, text, true))
                 column.addView(space(12))
@@ -298,7 +310,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     }
 
     private fun renderWifiScreen(column: LinearLayout, surface: Int, text: Int, muted: Int) {
-        column.addView(label(getString(R.string.wifi_eyebrow), 13, 0xff267766.toInt(), true))
+        column.addView(label(getString(R.string.wifi_eyebrow), 13, accentColor(), true))
         column.addView(space(8))
         column.addView(label(getString(R.string.wifi_title), 28, text, true))
         column.addView(space(6))
@@ -405,7 +417,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 })
             }
             networks.forEach { network ->
-                val row = networkRow(network, surface, text, muted)
+                val row = networkRow(network, text, muted)
                     .apply { tag = network.ssid }
                 networkRows += row
                 row.visibility =
@@ -501,10 +513,10 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 gravity = Gravity.CENTER
                 textSize = if (isProvisionButton) 16f else 20f
                 typeface = Typeface.DEFAULT_BOLD
-                setTextColor(if (isProvisionButton) 0xff146b5b.toInt() else muted)
+                setTextColor(if (isProvisionButton) accentColor() else muted)
                 background = rounded(
-                    if (isProvisionButton) 0xffdcefe9.toInt() else 0xffedf1ef.toInt(),
-                    if (isProvisionButton) 0xff146b5b.toInt() else 0xffd5ded9.toInt()
+                    if (isProvisionButton) accentSurface() else fieldBackground(),
+                    if (isProvisionButton) accentColor() else fieldBorder()
                 )
                 setPadding(dp(7), dp(5), dp(7), dp(5))
             }
@@ -536,12 +548,12 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             }
         }
 
-    private fun networkRow(network: NetworkChoice, surface: Int, text: Int, muted: Int): View =
+    private fun networkRow(network: NetworkChoice, text: Int, muted: Int): View =
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = rounded(fieldBackground(surface), fieldBorder())
+            background = rounded(fieldBackground(), fieldBorder())
             isClickable = true
             isFocusable = true
             val details = LinearLayout(this@MainActivity).apply {
@@ -557,10 +569,10 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 WifiBandFilter.Band.UNKNOWN -> getString(R.string.band_unknown)
                 WifiBandFilter.Band.OTHER -> getString(R.string.band_other)
             }
-            val badge = label(badgeText, 11, 0xff267766.toInt(), true).apply {
+            val badge = label(badgeText, 11, accentColor(), true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(8), dp(5), dp(8), dp(5))
-                background = rounded(0xffe7f3ee.toInt(), 0xffe7f3ee.toInt())
+                background = rounded(accentSurface(), accentSurface())
             }
             addView(badge)
             setOnClickListener { network.select() }
@@ -570,7 +582,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = rounded(surface, 0xffdce4df.toInt())
+            background = rounded(surface, fieldBorder())
             isClickable = true
             isFocusable = true
             content()
@@ -941,7 +953,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             gravity = Gravity.CENTER_VERTICAL
             val mark = label("E", 19, 0xffffffff.toInt(), true).apply {
                 gravity = Gravity.CENTER
-                background = rounded(0xff267766.toInt(), 0xff267766.toInt(), 17)
+                background = rounded(accentColor(), accentColor(), 17)
             }
             addView(mark, LinearLayout.LayoutParams(dp(38), dp(38)))
             val brandText = LinearLayout(this@MainActivity).apply {
@@ -951,10 +963,10 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 addView(label(getString(R.string.brand_subtitle), 11, muted, false))
             }
             addView(brandText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            val badge = label(getString(R.string.ble_badge), 11, 0xff267766.toInt(), true).apply {
+            val badge = label(getString(R.string.ble_badge), 11, accentColor(), true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(10), dp(6), dp(10), dp(6))
-                background = rounded(0xffe7f3ee.toInt(), 0xffe7f3ee.toInt())
+                background = rounded(accentSurface(), accentSurface())
             }
             addView(badge)
         }
@@ -985,8 +997,8 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                         if (active) 0xffffffff.toInt() else muted, true).apply {
                         gravity = Gravity.CENTER
                         background = rounded(
-                            if (active) 0xff267766.toInt() else fieldBackground(),
-                            if (active) 0xff267766.toInt() else fieldBorder(),
+                            if (active) accentColor() else fieldBackground(),
+                            if (active) accentColor() else fieldBorder(),
                             16
                         )
                     }
@@ -1015,10 +1027,10 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             text = title
             isAllCaps = false
             textSize = 15f
-            setTextColor(if (primary) 0xffffffff.toInt() else 0xff146b5b.toInt())
+            setTextColor(if (primary) 0xffffffff.toInt() else accentColor())
             background = rounded(
-                if (primary) 0xff267766.toInt() else fieldBackground(),
-                if (primary) 0xff267766.toInt() else fieldBorder(),
+                if (primary) accentColor() else fieldBackground(),
+                if (primary) accentColor() else fieldBorder(),
                 16
             )
             minHeight = dp(54)
