@@ -21,11 +21,18 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android 16 SDK
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -mindepth 3 -maxdepth 3 -type f -name sdkmanager | sort -V | tail -1)"
+          python3 - "$SDKMANAGER" <<'PY'
+          import subprocess
+          import sys
+
+          result = subprocess.run([sys.argv[1], "--licenses"], input="y\n" * 100, text=True)
+          raise SystemExit(result.returncode)
+          PY
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Build and test APK
         run: ./gradlew --no-daemon clean testDebugUnitTest assembleDebug
