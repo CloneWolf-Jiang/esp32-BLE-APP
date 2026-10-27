@@ -1071,7 +1071,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 setTextColor(0xffe7ddd3.toInt())
                 gravity = Gravity.CENTER
-                layoutParams = LayoutParams(
+                layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     Gravity.CENTER
@@ -1091,7 +1091,11 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 }
                 addView(
                     back,
-                    LayoutParams(dp(48), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START)
+                    FrameLayout.LayoutParams(
+                        dp(48),
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        Gravity.START
+                    )
                 )
             }
         }
