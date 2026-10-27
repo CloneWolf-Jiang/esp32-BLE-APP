@@ -60,6 +60,8 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     private var phoneWifiFresh = false
     private var phoneScanAttempted = false
     private var scanActive = false
+    private var radarSweepAngle = -90f
+    private var radarLastFrameAt = 0L
     private var wifiScanStarted = false
     private var didReadState = false
     private var capabilities = -1
@@ -79,6 +81,12 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
         bleClient = ImprovBleClient(this, this)
         wifiScanner = AndroidWifiScanner(this, this)
         render()
@@ -129,11 +137,24 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         window.statusBarColor = background
         window.navigationBarColor = background
         @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility = 0
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
 
         val scroll = ScrollView(this).apply {
             setBackgroundColor(background)
             isFillViewport = true
+            clipToPadding = false
+            setOnApplyWindowInsetsListener { view, insets ->
+                val cutout = if (Build.VERSION.SDK_INT >= 28) insets.displayCutout else null
+                val left = maxOf(insets.systemWindowInsetLeft, cutout?.safeInsetLeft ?: 0)
+                val top = maxOf(insets.systemWindowInsetTop, cutout?.safeInsetTop ?: 0)
+                val right = maxOf(insets.systemWindowInsetRight, cutout?.safeInsetRight ?: 0)
+                val bottom = maxOf(insets.systemWindowInsetBottom, cutout?.safeInsetBottom ?: 0)
+                view.setPadding(left, top, right, bottom)
+                insets
+            }
         }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -179,34 +200,19 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 column.addView(label(getString(R.string.guide_footer), 13, muted, false))
             }
             Screen.SCANNING -> {
-                if (foundDevices.isEmpty()) {
-                    column.addView(scanIllustration())
-                    column.addView(space(8))
-                    column.addView(label(
-                        getString(if (scanActive) R.string.scanning else R.string.scan_done),
-                        14,
-                        muted,
-                        false
-                    ).apply { gravity = Gravity.CENTER })
-                    column.addView(space(20))
-                }
+                column.addView(scanIllustration())
+                column.addView(space(8))
+                column.addView(label(
+                    getString(if (scanActive) R.string.scanning else R.string.scan_done),
+                    14,
+                    muted,
+                    false
+                ).apply { gravity = Gravity.CENTER })
+                column.addView(space(20))
                 column.addView(card(surface) {
                     addView(label(getString(R.string.scan_card_title), 17, text, true))
-                    addView(space(8))
-                    addView(label(
-                        when {
-                            scanActive -> getString(R.string.scanning)
-                            foundDevices.isEmpty() -> getString(R.string.scan_empty)
-                            else -> getString(R.string.scan_done)
-                        },
-                        15,
-                        muted,
-                        false
-                    ))
                     addView(space(12))
-                    if (foundDevices.isEmpty()) {
-                        addView(label(getString(R.string.scan_empty), 14, muted, false))
-                    } else {
+                    if (foundDevices.isNotEmpty()) {
                         foundDevices.values.forEach { item ->
                             addView(deviceRow(item, surface, text, muted))
                             addView(space(8))
@@ -542,27 +548,83 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     private fun scanIllustration(): View = object : View(this) {
         private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = dp(4).toFloat()
+            strokeWidth = dp(1).toFloat()
             strokeCap = Paint.Cap.ROUND
         }
+        private val sweepPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val sweepPath = android.graphics.Path()
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val centerX = width / 2f
             val centerY = height / 2f
-            drawProgressRing(canvas, centerX, centerY, dp(84).toFloat(), 0.74f, ringPaint)
-            val centerText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = 0xffe7ddd3.toInt()
-                textSize = dp(20).toFloat()
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                textAlign = Paint.Align.CENTER
+            val radius = minOf(width, height) * 0.43f
+            ringPaint.color = 0xff365274.toInt()
+            canvas.drawCircle(centerX, centerY, radius, ringPaint)
+            canvas.drawCircle(centerX, centerY, radius * 0.62f, ringPaint)
+            canvas.drawCircle(centerX, centerY, radius * 0.31f, ringPaint)
+
+            if (scanActive) {
+                val now = SystemClock.uptimeMillis()
+                if (radarLastFrameAt != 0L) {
+                    val delta = (now - radarLastFrameAt).coerceIn(0L, 48L)
+                    radarSweepAngle = (radarSweepAngle + delta * RADAR_DEGREES_PER_MS) % 360f
+                }
+                radarLastFrameAt = now
+            } else {
+                radarLastFrameAt = 0L
             }
-            canvas.drawText("···", centerX, centerY + dp(7), centerText)
+
+            val sweepBounds = RectF(
+                centerX - radius,
+                centerY - radius,
+                centerX + radius,
+                centerY + radius
+            )
+            sweepPath.reset()
+            sweepPath.moveTo(centerX, centerY)
+            sweepPath.arcTo(sweepBounds, radarSweepAngle - RADAR_SWEEP_DEGREES, RADAR_SWEEP_DEGREES)
+            sweepPath.close()
+            sweepPaint.color = 0x5577a9d8
+            canvas.drawPath(sweepPath, sweepPaint)
+
+            ringPaint.color = accentColor()
+            ringPaint.strokeWidth = dp(2).toFloat()
+            val angleRadians = Math.toRadians(radarSweepAngle.toDouble())
+            canvas.drawLine(
+                centerX,
+                centerY,
+                centerX + (radius * 0.94f * kotlin.math.cos(angleRadians)).toFloat(),
+                centerY + (radius * 0.94f * kotlin.math.sin(angleRadians)).toFloat(),
+                ringPaint
+            )
+            ringPaint.style = Paint.Style.FILL
+            canvas.drawCircle(centerX, centerY, dp(3).toFloat(), ringPaint)
+            ringPaint.style = Paint.Style.STROKE
+            ringPaint.strokeWidth = dp(1).toFloat()
+
+            if (scanActive) postInvalidateOnAnimation()
+        }
+
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
+            val desiredWidth = if (availableWidth > 0) availableWidth else resources.displayMetrics.widthPixels
+            val maxHeight = (resources.displayMetrics.heightPixels * 0.34f).toInt()
+                .coerceAtLeast(dp(160))
+            val desiredHeight = minOf(
+                desiredWidth - dp(24),
+                dp(300),
+                maxHeight
+            ).coerceAtLeast(dp(160))
+            setMeasuredDimension(
+                resolveSize(desiredWidth, widthMeasureSpec),
+                resolveSize(desiredHeight, heightMeasureSpec)
+            )
         }
     }.apply {
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(216)
+            ViewGroup.LayoutParams.WRAP_CONTENT
         )
         contentDescription = getString(R.string.scanning)
     }
@@ -1175,6 +1237,8 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     }
 
     companion object {
+        private const val RADAR_DEGREES_PER_MS = 0.09f
+        private const val RADAR_SWEEP_DEGREES = 48f
         private const val REQUEST_ENABLE_BLUETOOTH = 71
         private const val REQUEST_PERMISSIONS = 72
         private const val DEVICE_WIFI_SCAN_TIMEOUT_MS = 12_000L
