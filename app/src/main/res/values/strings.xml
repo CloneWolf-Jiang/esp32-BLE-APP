@@ -17,6 +17,7 @@
     <string name="scan_empty">尚未发现设备。确认设备已通电并处于蓝牙配网模式。</string>
     <string name="scan_done">扫描已结束。选择设备连接，或再次扫描。</string>
     <string name="scanning">正在扫描真实 BLE 设备…</string>
+    <string name="pairing_ready">附近 · 已发现设备</string>
     <string name="stop_scan">停止扫描</string>
     <string name="retry">重新尝试</string>
     <string name="connect">连接设备</string>

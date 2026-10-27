@@ -11,6 +11,7 @@
     <string name="button_window">After release, the authorization window lasts 1 minute</string>
     <string name="start_scan">Start scanning</string>
     <string name="scan_card_title">Select your ESPHome device</string>
+    <string name="pairing_ready">Nearby · Device found</string>
     <string name="wifi_show_5ghz">Also show 5 GHz Wi-Fi</string>
     <string name="wifi_band_hint">Only 2.4 GHz networks are shown by default, recommended for ESP32-C3 devices.</string>
     <string name="band_24ghz">2.4 GHz</string>
