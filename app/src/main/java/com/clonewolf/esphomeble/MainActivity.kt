@@ -62,8 +62,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     private var scanActive = false
     private var radarSweepAngle = -90f
     private var radarLastFrameAt = 0L
-    private var authorizationCheckInProgress = false
-    private var authorizationCheckMessage: String? = null
     private var wifiScanStarted = false
     private var didReadState = false
     private var capabilities = -1
@@ -77,7 +75,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     private var scanTimeout: Runnable? = null
     private var provisioningTimeout: Runnable? = null
     private var deviceExpiry: Runnable? = null
-    private var authorizationCheckTimeout: Runnable? = null
     private var pendingAction: (() -> Unit)? = null
     private var pendingWifiScan = false
 
@@ -109,9 +106,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         password = ""
         scanTimeout?.let { root?.removeCallbacks(it) }
         provisioningTimeout?.let { root?.removeCallbacks(it) }
-        finishAuthorizationCheck(null)
         deviceExpiry?.let { root?.removeCallbacks(it) }
-        authorizationCheckTimeout?.let { root?.removeCallbacks(it) }
         super.onDestroy()
     }
 
@@ -247,11 +242,13 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                     addView(space(6))
                     addView(label(connectionMessage, 15, muted, false))
                     addView(space(12))
-                    addView(label(getString(R.string.waiting_auth), 15, text, false))
+                    addView(label(getString(R.string.authorization_instruction), 15, text, false))
                 })
             }
             Screen.WAITING_AUTH -> {
                 column.addView(label(getString(R.string.waiting_auth), 23, text, true))
+                column.addView(space(6))
+                column.addView(label(getString(R.string.authorization_instruction), 15, muted, false))
                 column.addView(space(14))
                 column.addView(card(surface) {
                     addView(label(
@@ -262,10 +259,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                     ))
                     addView(space(6))
                     addView(label(getString(R.string.pairing_ready), 13, 0xffa6d6cc.toInt(), false))
-                    authorizationCheckMessage?.let { message ->
-                        addView(space(8))
-                        addView(label(message, 13, muted, false))
-                    }
                     addView(space(18))
                     addView(buttonDiagram(text, muted))
                     addView(space(18))
@@ -276,17 +269,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                     guideReturnScreen = Screen.WAITING_AUTH
                     screen = Screen.GUIDE
                     render()
-                })
-                column.addView(space(8))
-                column.addView(secondaryButton(
-                    getString(
-                        if (authorizationCheckInProgress) R.string.checking_authorization
-                        else R.string.check_authorization
-                    )
-                ) {
-                    checkDeviceAuthorization()
-                }.apply {
-                    isEnabled = !authorizationCheckInProgress
                 })
             }
             Screen.WIFI -> renderWifiScreen(column, surface, text, muted)
@@ -801,31 +783,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         }
     }
 
-    private fun checkDeviceAuthorization() {
-        if (screen != Screen.WAITING_AUTH || authorizationCheckInProgress) return
-        authorizationCheckInProgress = true
-        authorizationCheckMessage = null
-        render()
-
-        authorizationCheckTimeout?.let { root?.removeCallbacks(it) }
-        val timeout = Runnable {
-            if (screen == Screen.WAITING_AUTH && authorizationCheckInProgress) {
-                finishAuthorizationCheck(getString(R.string.authorization_check_timeout))
-                render()
-            }
-        }
-        authorizationCheckTimeout = timeout
-        root?.postDelayed(timeout, AUTHORIZATION_CHECK_TIMEOUT_MS)
-        bleClient.readCurrentState()
-    }
-
-    private fun finishAuthorizationCheck(message: String?) {
-        authorizationCheckInProgress = false
-        authorizationCheckTimeout?.let { root?.removeCallbacks(it) }
-        authorizationCheckTimeout = null
-        authorizationCheckMessage = message
-    }
-
     private fun requestNeededPermissions(permissions: List<String>, action: () -> Unit) {
         val missing = permissions.distinct().filter {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
@@ -1022,9 +979,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         didReadState = true
         when (state) {
             ImprovProtocol.AUTHORIZATION_REQUIRED -> {
-                if (authorizationCheckInProgress) {
-                    finishAuthorizationCheck(getString(R.string.authorization_still_required))
-                }
                 if (screen == Screen.GUIDE && guideReturnScreen != null) {
                     guideReturnScreen = null
                 }
@@ -1032,7 +986,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 render()
             }
             ImprovProtocol.AUTHORIZED -> {
-                if (authorizationCheckInProgress) finishAuthorizationCheck(null)
                 if (capabilities >= 0 &&
                     (screen == Screen.CONNECTING || screen == Screen.WAITING_AUTH ||
                         (screen == Screen.GUIDE && guideReturnScreen != null))
@@ -1099,11 +1052,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     }
 
     override fun onFailure(message: ImprovBleClient.Failure) {
-        if (screen == Screen.WAITING_AUTH && authorizationCheckInProgress) {
-            finishAuthorizationCheck(getString(R.string.authorization_check_failed))
-            render()
-            return
-        }
         when (message) {
             ImprovBleClient.Failure.BLUETOOTH_OFF -> showError(getString(R.string.bluetooth_off))
             ImprovBleClient.Failure.PERMISSION -> showError(getString(R.string.permission_denied))
@@ -1124,9 +1072,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     }
 
     override fun onDisconnected() {
-        if (authorizationCheckInProgress) {
-            finishAuthorizationCheck(getString(R.string.connection_lost))
-        }
         if (screen == Screen.SUBMITTING) return
         if (screen != Screen.SUCCESS && screen != Screen.ERROR) {
             showError(getString(R.string.connection_lost))
@@ -1290,7 +1235,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
     companion object {
         private const val RADAR_DEGREES_PER_MS = 0.09f
         private const val RADAR_SWEEP_DEGREES = 48f
-        private const val AUTHORIZATION_CHECK_TIMEOUT_MS = 12_000L
         private const val REQUEST_ENABLE_BLUETOOTH = 71
         private const val REQUEST_PERMISSIONS = 72
         private const val DEVICE_WIFI_SCAN_TIMEOUT_MS = 12_000L
