@@ -18,11 +18,8 @@
     <string name="band_5ghz">5 GHz</string>
     <string name="band_unknown">Band unknown</string>
     <string name="band_other">Other band</string>
-    <string name="check_authorization">Check device authorization again</string>
-    <string name="checking_authorization">Checking device authorization…</string>
-    <string name="authorization_still_required">The device is not authorized yet. Follow the button instructions, then check again.</string>
-    <string name="authorization_check_failed">Could not read the device authorization state. Check the Bluetooth connection and try again.</string>
-    <string name="authorization_check_timeout">Authorization check timed out. Make sure the device is still connected, then try again.</string>
+    <string name="waiting_auth">Device not authorized</string>
+    <string name="authorization_instruction">Press and hold button 1 on the far left for 5 seconds...</string>
     <string name="step_device">Find device</string>
     <string name="step_authorize">Authorize</string>
     <string name="step_wifi">Connect Wi-Fi</string>

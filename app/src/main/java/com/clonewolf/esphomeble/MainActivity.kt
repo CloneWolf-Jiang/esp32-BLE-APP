@@ -331,6 +331,64 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
         column.addView(label(getString(R.string.wifi_subtitle), 14, muted, false))
         column.addView(space(16))
         column.addView(card(surface) {
+            addView(label(getString(R.string.wifi_credentials), 17, text, true))
+            addView(space(12))
+            addView(label(getString(R.string.ssid_label), 12, muted, true))
+            addView(space(4))
+            val ssidField = EditText(this@MainActivity).apply {
+                hint = this@MainActivity.getString(R.string.ssid_hint)
+                setSingleLine(true)
+                setText(ssid)
+                textSize = 16f
+                setTextColor(text)
+                setHintTextColor(muted)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = rounded(fieldBackground(), fieldBorder())
+                addTextChangedListener(SimpleTextWatcher { ssid = it })
+            }
+            ssidInput = ssidField
+            addView(ssidField, matchWrap())
+            val hidden = CheckBox(this@MainActivity).apply {
+                this.text = this@MainActivity.getString(R.string.hidden_network)
+                setTextColor(text)
+                isChecked = hiddenNetwork
+                setOnCheckedChangeListener { _, checked -> hiddenNetwork = checked }
+            }
+            addView(hidden)
+            addView(space(8))
+            addView(label(getString(R.string.password_label), 12, muted, true))
+            addView(space(4))
+            val pwField = EditText(this@MainActivity).apply {
+                hint = this@MainActivity.getString(R.string.password_hint)
+                setSingleLine(true)
+                setText(password)
+                textSize = 16f
+                setTextColor(text)
+                setHintTextColor(muted)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = rounded(fieldBackground(), fieldBorder())
+                inputType = InputType.TYPE_CLASS_TEXT or
+                    if (passwordVisible) InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    else InputType.TYPE_TEXT_VARIATION_PASSWORD
+                addTextChangedListener(SimpleTextWatcher { password = it })
+            }
+            passwordInput = pwField
+            addView(pwField, matchWrap())
+            passwordToggle = secondaryButton(
+                this@MainActivity.getString(
+                    if (passwordVisible) R.string.hide_password else R.string.show_password
+                )
+            ) {
+                passwordVisible = !passwordVisible
+                render()
+                passwordInput?.requestFocus()
+            }
+            addView(passwordToggle)
+        })
+        column.addView(space(12))
+        column.addView(primaryButton(getString(R.string.submit)) { submitCredentials() })
+        column.addView(space(16))
+        column.addView(card(surface) {
             val source = when {
                 deviceNetworks.isNotEmpty() && phoneNetworks.isNotEmpty() ->
                     getString(R.string.wifi_source_both)
@@ -339,15 +397,15 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 phoneScanAttempted -> getString(R.string.wifi_source_phone)
                 else -> getString(R.string.device_scan_not_supported)
             }
-            addView(label(source, 14, muted, true))
-            if (phoneScanAttempted && !phoneWifiFresh) {
-                addView(space(5))
-                addView(label(getString(R.string.cached_scan_results), 12, muted, false))
-            }
-            addView(space(14))
             addView(label(getString(R.string.nearby_networks), 17, text, true))
             addView(space(4))
+            addView(label(source, 12, muted, false))
+            addView(space(3))
             addView(label(getString(R.string.wifi_band_hint), 13, muted, false))
+            if (phoneScanAttempted && !phoneWifiFresh) {
+                addView(space(3))
+                addView(label(getString(R.string.cached_scan_results), 12, muted, false))
+            }
             addView(space(6))
             val bandToggle = CheckBox(this@MainActivity).apply {
                 this.text = this@MainActivity.getString(R.string.wifi_show_5ghz)
@@ -448,70 +506,6 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             phoneWifiFresh = false
             phoneScanAttempted = false
             discoverWifi()
-        })
-        column.addView(space(14))
-        column.addView(card(surface) {
-            addView(label(getString(R.string.wifi_credentials), 17, text, true))
-            addView(space(12))
-            addView(label(getString(R.string.ssid_label), 12, muted, true))
-            addView(space(4))
-            val ssidField = EditText(this@MainActivity).apply {
-                hint = this@MainActivity.getString(R.string.ssid_hint)
-                setSingleLine(true)
-                setText(ssid)
-                textSize = 16f
-                setTextColor(text)
-                setHintTextColor(muted)
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = rounded(fieldBackground(), fieldBorder())
-                addTextChangedListener(SimpleTextWatcher { ssid = it })
-            }
-            ssidInput = ssidField
-            addView(ssidField, matchWrap())
-            val hidden = CheckBox(this@MainActivity).apply {
-                this.text = this@MainActivity.getString(R.string.hidden_network)
-                setTextColor(text)
-                isChecked = hiddenNetwork
-                setOnCheckedChangeListener { _, checked -> hiddenNetwork = checked }
-            }
-            addView(hidden)
-            addView(space(8))
-            addView(label(getString(R.string.password_label), 12, muted, true))
-            addView(space(4))
-            val pwField = EditText(this@MainActivity).apply {
-                hint = this@MainActivity.getString(R.string.password_hint)
-                setSingleLine(true)
-                setText(password)
-                textSize = 16f
-                setTextColor(text)
-                setHintTextColor(muted)
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = rounded(fieldBackground(), fieldBorder())
-                inputType = InputType.TYPE_CLASS_TEXT or
-                    if (passwordVisible) InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                    else InputType.TYPE_TEXT_VARIATION_PASSWORD
-                addTextChangedListener(SimpleTextWatcher { password = it })
-            }
-            passwordInput = pwField
-            addView(pwField, matchWrap())
-            passwordToggle = secondaryButton(
-                this@MainActivity.getString(
-                    if (passwordVisible) R.string.hide_password else R.string.show_password
-                )
-            ) {
-                passwordVisible = !passwordVisible
-                render()
-                passwordInput?.requestFocus()
-            }
-            addView(passwordToggle)
-        })
-        column.addView(space(14))
-        column.addView(primaryButton(getString(R.string.submit)) { submitCredentials() })
-        column.addView(space(8))
-        column.addView(secondaryButton(getString(R.string.show_guide)) {
-            guideReturnScreen = Screen.WIFI
-            screen = Screen.GUIDE
-            render()
         })
     }
 
@@ -631,12 +625,32 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
             strokeWidth = dp(4).toFloat()
             strokeCap = Paint.Cap.ROUND
         }
+        private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = dp(1).toFloat()
+        }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val centerX = width / 2f
             val centerY = height / 2f
-            drawProgressRing(canvas, centerX, centerY, dp(72).toFloat(), 0.65f, ringPaint)
+            val frameTime = SystemClock.uptimeMillis()
+            val pulse = (frameTime % 1_500L) / 1_500f
+            for (index in 0..2) {
+                val ripplePhase = (pulse + index / 3f) % 1f
+                ripplePaint.color = 0xff77a9d8.toInt()
+                ripplePaint.alpha = ((1f - ripplePhase) * 90f).toInt()
+                canvas.drawCircle(
+                    centerX,
+                    centerY,
+                    dp(78).toFloat() + dp(14) * ripplePhase,
+                    ripplePaint
+                )
+            }
+            canvas.save()
+            canvas.rotate(frameTime * 0.05f % 360f, centerX, centerY)
+            drawProgressRing(canvas, centerX, centerY, dp(68).toFloat(), 0.65f, ringPaint)
+            canvas.restore()
             val centerText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = 0xffe7ddd3.toInt()
                 textSize = dp(18).toFloat()
@@ -644,6 +658,9 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 textAlign = Paint.Align.CENTER
             }
             canvas.drawText("BLE", centerX, centerY + dp(6), centerText)
+            if (screen == Screen.CONNECTING || screen == Screen.SUBMITTING) {
+                postInvalidateOnAnimation()
+            }
         }
     }.apply {
         layoutParams = LinearLayout.LayoutParams(
