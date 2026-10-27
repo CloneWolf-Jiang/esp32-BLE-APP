@@ -538,7 +538,7 @@ internal class MainActivity : Activity(), ImprovBleClient.Listener, AndroidWifiS
                 )
                 setPadding(dp(7), dp(5), dp(7), dp(5))
             }
-            val params = LinearLayout.LayoutParams(dp(76), dp(82))
+            val params = LinearLayout.LayoutParams(0, dp(82), 1f)
             if (number != 1) params.leftMargin = dp(12)
             diagram.addView(button, params)
         }
