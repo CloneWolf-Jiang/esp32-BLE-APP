@@ -26,6 +26,10 @@
     <string name="waiting_auth">已连接，但设备尚未授权。请长按开关最左侧的 1 号按键 5 秒；APP 不会检测按键本身。</string>
     <string name="authorized">设备已通过协议报告授权，可以选择 Wi-Fi。</string>
     <string name="check_authorization">重新检查设备授权状态</string>
+    <string name="checking_authorization">正在检查设备授权…</string>
+    <string name="authorization_still_required">设备仍未授权。请按指引长按设备按键，然后再次检查。</string>
+    <string name="authorization_check_failed">暂时无法读取设备授权状态，请确认蓝牙连接后重试。</string>
+    <string name="authorization_check_timeout">检查授权状态超时，请确认设备仍处于连接状态后重试。</string>
     <string name="wifi_title">选择 Wi-Fi 网络</string>
     <string name="wifi_eyebrow">第三步 · 网络设置</string>
     <string name="wifi_subtitle">请选择家庭网络并输入密码，设备将通过蓝牙安全接收。</string>
